@@ -1,6 +1,5 @@
 const express = require('express');
 const multer = require('multer');
-const { PDFParse } = require('pdf-parse');
 const { callFlow, parseModelJSON } = require('../services/aimicromind');
 
 const router = express.Router();
@@ -14,14 +13,12 @@ router.post('/full-analysis', upload.single('cvFile'), async (req, res) => {
     if (!jdText) return res.status(400).json({ error: 'Job description text is required.' });
 
     // 1. Extract text from the uploaded PDF
-    const parser = new PDFParse({ data: req.file.buffer });
-    let cvText;
-    try {
-      const pdfData = await parser.getText({ pageJoiner: '' });
-      cvText = pdfData.text.trim();
-    } finally {
-      await parser.destroy();
-    }
+    // unpdf is ESM-only and serverless-safe; loaded lazily so a PDF
+    // library problem can never stop the rest of the API from starting.
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const pdf = await getDocumentProxy(new Uint8Array(req.file.buffer));
+    const { text } = await extractText(pdf, { mergePages: true });
+    const cvText = text.trim();
     if (!cvText) return res.status(400).json({ error: 'Could not extract any text from the PDF.' });
 
     // 2. CV Analyzer
