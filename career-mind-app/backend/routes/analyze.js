@@ -1,10 +1,11 @@
 const express = require('express');
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const { callFlow, parseModelJSON } = require('../services/aimicromind');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+// 4 MB cap keeps uploads under Vercel's 4.5 MB function request body limit
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
 
 router.post('/full-analysis', upload.single('cvFile'), async (req, res) => {
   try {
@@ -13,8 +14,14 @@ router.post('/full-analysis', upload.single('cvFile'), async (req, res) => {
     if (!jdText) return res.status(400).json({ error: 'Job description text is required.' });
 
     // 1. Extract text from the uploaded PDF
-    const pdfData = await pdfParse(req.file.buffer);
-    const cvText = pdfData.text.trim();
+    const parser = new PDFParse({ data: req.file.buffer });
+    let cvText;
+    try {
+      const pdfData = await parser.getText({ pageJoiner: '' });
+      cvText = pdfData.text.trim();
+    } finally {
+      await parser.destroy();
+    }
     if (!cvText) return res.status(400).json({ error: 'Could not extract any text from the PDF.' });
 
     // 2. CV Analyzer

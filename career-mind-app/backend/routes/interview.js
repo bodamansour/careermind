@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { callFlow, parseModelJSON } = require('../services/aimicromind');
 
 const router = express.Router();
@@ -10,7 +10,7 @@ router.post('/start', async (req, res) => {
     const { cv, job } = req.body;
     if (!cv || !job) return res.status(400).json({ error: 'cv and job data are required.' });
 
-    const sessionId = uuidv4();
+    const sessionId = randomUUID();
     const question =
       `CV_DATA:\n${JSON.stringify(cv)}\n\n` +
       `JOB_DATA:\n${JSON.stringify(job)}\n\n` +
