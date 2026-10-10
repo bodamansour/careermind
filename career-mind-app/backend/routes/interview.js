@@ -1,10 +1,11 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
-const { AppError, callFlow, parseModelJSON } = require('../services/aimicromind');
+const { AppError, parseModelJSON, runInterviewTurn } = require('../services/agents');
 
 const router = express.Router();
 
 const MAX_ANSWER_LENGTH = 5000;
+const MAX_HISTORY = 40;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function toScore(value) {
@@ -34,6 +35,32 @@ function extractEvaluation(reply) {
   };
 }
 
+// The built-in LLM is stateless, so the client sends back the conversation so far.
+function validHistory(history) {
+  if (history == null) return [];
+  if (
+    !Array.isArray(history) ||
+    history.length > MAX_HISTORY ||
+    !history.every(
+      (m) =>
+        m &&
+        (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string' &&
+        m.content.length <= MAX_ANSWER_LENGTH * 2
+    )
+  ) {
+    throw new AppError('Invalid interview history. Start a new interview.', 400);
+  }
+  return history.map((m) => ({ role: m.role, content: m.content }));
+}
+
+function requireReply(reply) {
+  if (!reply || !String(reply).trim()) {
+    throw new AppError('Interview Agent returned an empty reply. Try sending your answer again.', 502);
+  }
+  return reply;
+}
+
 // Start a new mock interview session
 router.post('/start', async (req, res, next) => {
   try {
@@ -41,12 +68,7 @@ router.post('/start', async (req, res, next) => {
     if (!cv || !job) throw new AppError('Run the analysis first — cv and job data are required.', 400);
 
     const sessionId = randomUUID();
-    const question =
-      `CV_DATA:\n${JSON.stringify(cv)}\n\n` +
-      `JOB_DATA:\n${JSON.stringify(job)}\n\n` +
-      `Start the interview.`;
-
-    const reply = await callFlow('interview', question, sessionId);
+    const reply = requireReply(await runInterviewTurn({ cv, job, sessionId }));
 
     res.json({ sessionId, message: reply, isFinal: false });
   } catch (err) {
@@ -57,7 +79,7 @@ router.post('/start', async (req, res, next) => {
 // Send the candidate's answer, get the next question (or the final evaluation)
 router.post('/message', async (req, res, next) => {
   try {
-    const { sessionId } = req.body || {};
+    const { sessionId, cv, job } = req.body || {};
     const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
     if (!sessionId || !message) throw new AppError('sessionId and message are required.', 400);
     if (!UUID_RE.test(sessionId)) throw new AppError('Invalid interview session. Start a new interview.', 400);
@@ -65,7 +87,9 @@ router.post('/message', async (req, res, next) => {
       throw new AppError(`Answer is too long (max ${MAX_ANSWER_LENGTH} characters).`, 400);
     }
 
-    const reply = await callFlow('interview', message, sessionId);
+    const history = validHistory(req.body.history);
+
+    const reply = requireReply(await runInterviewTurn({ cv, job, sessionId, history, message }));
     const evaluation = extractEvaluation(reply);
 
     res.json({

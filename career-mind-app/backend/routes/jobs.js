@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { AppError } = require('../services/aimicromind');
+const { AppError } = require('../services/agents');
 
 const router = express.Router();
 

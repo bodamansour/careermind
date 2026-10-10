@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { AppError, callFlowJSON } = require('../services/aimicromind');
+const { AppError, runJSONAgent } = require('../services/agents');
 
 const router = express.Router();
 // 4 MB cap keeps uploads under Vercel's 4.5 MB function request body limit
@@ -49,16 +49,16 @@ router.post('/full-analysis', upload.single('cvFile'), async (req, res, next) =>
     }
 
     // 2 + 3. CV Analyzer and Job Analyzer are independent, so run them in parallel
-    const [cv, job] = await Promise.all([callFlowJSON('cv', cvText), callFlowJSON('job', jdText)]);
+    const [cv, job] = await Promise.all([runJSONAgent('cv', cvText), runJSONAgent('job', jdText)]);
 
     // 4. Matching Agent
-    const matching = await callFlowJSON(
+    const matching = await runJSONAgent(
       'matching',
       `CV_DATA:\n${JSON.stringify(cv)}\n\nJOB_DATA:\n${JSON.stringify(job)}`
     );
 
     // 5. Skill Gap Agent
-    const skillGap = await callFlowJSON(
+    const skillGap = await runJSONAgent(
       'skillGap',
       `missing_skills: ${JSON.stringify(matching.missing_skills || [])}\n` +
         `partial_match_skills: ${JSON.stringify(matching.partial_match_skills || [])}\n\n` +
@@ -66,7 +66,7 @@ router.post('/full-analysis', upload.single('cvFile'), async (req, res, next) =>
     );
 
     // 6. Roadmap Agent
-    const roadmap = await callFlowJSON('roadmap', JSON.stringify(skillGap));
+    const roadmap = await runJSONAgent('roadmap', JSON.stringify(skillGap));
 
     res.json({ cv, job, matching, skillGap, roadmap });
   } catch (err) {

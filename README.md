@@ -10,7 +10,7 @@ for the interview.
 
 ![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
-![AiMicromind](https://img.shields.io/badge/Agents-AiMicromind%20%2F%20Flowise-8b7cff)
+![OpenRouter](https://img.shields.io/badge/LLM-OpenRouter-8b7cff)
 ![Deploy](https://img.shields.io/badge/Deploy-Vercel%20%7C%20Render-00d9a3)
 
 <img src="docs/screenshots/02-readout.png" alt="CareerMind readiness readout" width="820" />
@@ -60,10 +60,14 @@ Most "CV vs. job" tools stop at a match percentage. CareerMind goes further:
 ## The 6 agents
 
 Instead of asking one general-purpose model to do everything, CareerMind splits the
-work across **six agents with one job each**. Every agent is its own AiMicromind
-(Flowise) chatflow, so you can tune, test and swap them on their own.
+work across **six agents with one job each**. Each agent has its own system prompt
+(in [`services/prompts.js`](career-mind-app/backend/services/prompts.js)) and runs on an
+LLM through [OpenRouter](https://openrouter.ai). You only need **one API key**.
 
-| # | Agent | Input | Output | Env variable |
+Any agent can also run on your own AiMicromind / Flowise chatflow: set its URL variable
+(last column) and that agent uses the chatflow instead of the built-in prompt.
+
+| # | Agent | Input | Output | Optional chatflow override |
 |---|-------|-------|--------|--------------|
 | 1 | **CV Analyzer** | Raw text extracted from the CV PDF | Structured profile: name, title, experience, skills… | `CV_ANALYZER_URL` |
 | 2 | **Job Analyzer** | The pasted job description | Structured job: `job_title`, required skills, seniority… | `JOB_ANALYZER_URL` |
@@ -93,8 +97,11 @@ Turns the gap analysis into a week-by-week development plan with topics and a
 hands-on project per week.
 
 ### 6. Interview Agent
-Runs a conversational mock interview. Each request carries the same `sessionId`, so
-the flow's Buffer Memory remembers the conversation. When the agent is done, it
+Runs a conversational mock interview: five questions, one at a time, mixing the
+job's required skills with the candidate's real projects, with short feedback after
+each answer. The server is stateless (it works on serverless platforms), so the browser
+sends the conversation so far with each answer. With a chatflow override, the flow's
+Buffer Memory keeps the conversation by `sessionId` instead. At the end, the agent
 replies with a JSON evaluation:
 
 ```json
@@ -146,12 +153,13 @@ career-mind-app/backend/
 │   ├── interview.js        # Agent 6 (start / message)
 │   └── jobs.js             # Adzuna job search
 ├── services/
-│   └── aimicromind.js      # Agent registry, HTTP calls, error mapping, JSON parsing
+│   ├── agents.js           # Agent registry, OpenRouter / chatflow calls, errors, JSON parsing
+│   └── prompts.js          # System prompts of the 6 agents
 └── public/                 # Frontend (vanilla HTML / CSS / JS)
 ```
 
-**Tech stack:** Node.js + Express · AiMicromind (Flowise) for agent hosting ·
-OpenRouter for LLM access · `unpdf` for PDF text extraction · vanilla HTML/CSS/JS ·
+**Tech stack:** Node.js + Express · OpenRouter for LLM access ·
+AiMicromind (Flowise) chatflows as an optional per-agent override · `unpdf` for PDF text extraction · vanilla HTML/CSS/JS ·
 Adzuna API for job search.
 
 ## Getting started
@@ -159,7 +167,7 @@ Adzuna API for job search.
 ### Prerequisites
 
 - **Node.js 20+** (24.x recommended; production pins 24.x)
-- An [AiMicromind](https://aimicromind.com) account with the six chatflows created
+- A free [OpenRouter API key](https://openrouter.ai/keys)
 - *(Optional)* a free [Adzuna](https://developer.adzuna.com/) API key for job search
 
 ### 1. Install
@@ -176,9 +184,8 @@ npm install
 cp .env.example .env
 ```
 
-For each agent, open its chatflow in AiMicromind → click **API** → copy the
-prediction URL into `.env` (replace every `REPLACE_ME`). See
-[Configuration](#configuration) for the full list.
+Open `.env` and set `OPENROUTER_API_KEY`. That's all you need. See
+[Configuration](#configuration) for the optional settings.
 
 ### 3. Run
 
@@ -194,12 +201,9 @@ The server also prints a warning on startup.
 
 | Variable | Required | Description |
 | --- | :---: | --- |
-| `CV_ANALYZER_URL` | ✅ | Prediction URL of the CV Analyzer chatflow |
-| `JOB_ANALYZER_URL` | ✅ | Prediction URL of the Job Analyzer chatflow |
-| `MATCHING_URL` | ✅ | Prediction URL of the Matching Agent chatflow |
-| `SKILLGAP_URL` | ✅ | Prediction URL of the Skill Gap Agent chatflow |
-| `ROADMAP_URL` | ✅ | Prediction URL of the Roadmap Agent chatflow |
-| `INTERVIEW_URL` | ✅ | Prediction URL of the Interview Agent chatflow |
+| `OPENROUTER_API_KEY` | ✅ | Your [OpenRouter key](https://openrouter.ai/keys). Powers all 6 agents |
+| `OPENROUTER_MODEL` | – | Any [model id](https://openrouter.ai/models). Default `openrouter/free`, which picks a free model (rate limited). For faster, more consistent results, use a paid model such as `openai/gpt-4o-mini` |
+| `CV_ANALYZER_URL` … `INTERVIEW_URL` | – | Run that agent on your own AiMicromind / Flowise chatflow instead of the built-in prompt |
 | `AIMICROMIND_API_KEY` | – | Only if your chatflows use *API Key* authorization |
 | `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | – | Turns on the *Open roles* step |
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
@@ -223,8 +227,8 @@ extra config. Files in `public/` are served from Vercel's CDN.
 1. Import the repo at [vercel.com/new](https://vercel.com/new).
 2. Set **Root Directory** to `career-mind-app/backend`. Leave the framework preset
    as detected (Express / Other), with no build command.
-3. Under **Environment Variables**, add the variables from
-   [Configuration](#configuration).
+3. Under **Environment Variables**, add `OPENROUTER_API_KEY` (and optionally the
+   other variables from [Configuration](#configuration)).
 4. Deploy, then open `https://<your-app>.vercel.app/api/health` to check the config.
 
 > **Limits on Vercel:** request bodies are capped at 4.5 MB (CV uploads are capped at
@@ -237,7 +241,7 @@ extra config. Files in `public/` are served from Vercel's CDN.
 The repo includes a [`render.yaml`](render.yaml) Blueprint.
 
 1. In Render, click **New + → Blueprint** and pick this repo.
-2. Fill in the secret values Render asks for (the agent URLs and optional keys).
+2. Paste your `OPENROUTER_API_KEY` when Render asks for it (Adzuna keys are optional).
 3. Click **Apply**. Render runs `npm ci`, starts the app with `npm start`, and
    health-checks `/api/health`.
 
@@ -261,10 +265,10 @@ All endpoints return JSON. Errors always have the shape `{ "error": "<message>" 
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/api/health` | – | `{ status, missingConfig[], jobSearch }` |
+| `GET` | `/api/health` | – | `{ status, agents: { <name>: "llm" \| "flow" \| "not configured" }, jobSearch }` |
 | `POST` | `/api/full-analysis` | multipart: `cvFile` (PDF ≤ 4 MB), `jdText` | `{ cv, job, matching, skillGap, roadmap }` |
 | `POST` | `/api/interview/start` | `{ cv, job }` | `{ sessionId, message, isFinal: false }` |
-| `POST` | `/api/interview/message` | `{ sessionId, message }` | `{ message, isFinal, evaluation }` |
+| `POST` | `/api/interview/message` | `{ sessionId, message, cv, job, history[] }` | `{ message, isFinal, evaluation }` |
 | `GET` | `/api/jobs/search?q=<role>` | – | `{ jobs: [{ title, company, location, url }] }` |
 
 ## Error handling
@@ -277,8 +281,10 @@ Every failure returns a clear, specific message, and the UI shows it as a toast.
 | File is not a PDF, or is corrupted / password-protected | 400 | `The uploaded file is not a PDF…` |
 | Scanned / image-only PDF | 400 | `Could not extract any text from the PDF…` |
 | CV larger than 4 MB | 413 | `CV file is too large (max 4 MB).` |
-| Agent URL not set | 503 | `Matching Agent is not configured. Set MATCHING_URL…` |
-| Agent flow not found / wrong API key | 502 | `Roadmap Agent flow was not found (HTTP 404). Check ROADMAP_URL.` |
+| No API key set | 503 | `Matching Agent is not configured. Set OPENROUTER_API_KEY…` |
+| Wrong API key / out of credits | 502 | `CV Analyzer rejected the request (HTTP 401). Check OPENROUTER_API_KEY.` |
+| Rate limited (free models) | 503 | `Job Analyzer is rate limited. Wait a minute and try again.` |
+| Chatflow override not found | 502 | `Roadmap Agent was not found (HTTP 404). Check ROADMAP_URL.` |
 | Agent returned non-JSON | 502 | `Skill Gap Agent returned an unexpected format…` |
 | Agent too slow | 504 | `Interview Agent took too long to respond…` |
 | Job search not configured | 503 | `Job search is not configured yet…` |
@@ -290,13 +296,18 @@ all model output is rendered as plain text, never as HTML.
 
 ## Troubleshooting
 
-- **`/api/health` shows `degraded`** — one or more agent URLs are missing or still
-  contain `REPLACE_ME`. The `missingConfig` field lists them.
-- **"… returned an unexpected format"** — the model added prose around its JSON. The
-  parser already handles code fences and surrounding text. If it still fails, check
-  the raw reply in the server logs and make that agent's System Message stricter
-  ("Respond with JSON only, no extra text").
-- **"… rejected the request (HTTP 401/403)"** — the chatflow uses API-key auth. Set
+- **`/api/health` shows `degraded`** — `OPENROUTER_API_KEY` is not set. The `agents`
+  field shows how each agent is configured.
+- **An agent fails with HTTP 401 / "User not found"** — the OpenRouter key is invalid
+  or was deleted. If that agent uses a chatflow override, the key stored *inside* the
+  chatflow is the one to fix, or remove the override URL to use the built-in agent.
+- **"rate limited"** — free models allow only a limited number of requests per minute
+  and per day. Wait, add a few credits on OpenRouter, or set `OPENROUTER_MODEL` to a
+  paid model.
+- **"… returned an unexpected format"** — the model replied without valid JSON twice
+  in a row (the server retries once). Small free models do this sometimes. Try again,
+  or set `OPENROUTER_MODEL` to a stronger model.
+- **Chatflow override rejected (HTTP 401/403)** — the chatflow uses API-key auth. Set
   `AIMICROMIND_API_KEY`.
 - **Interview never shows a result** — the final evaluation must be JSON with a
   numeric (or numeric-string) `overall_score`.

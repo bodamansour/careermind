@@ -81,6 +81,7 @@ let state = {
   skillGap: null,
   roadmap: null,
   interviewSessionId: null,
+  interviewHistory: [],
   interviewScore: null,
 };
 
@@ -304,6 +305,7 @@ document.getElementById('startInterviewBtn').addEventListener('click', async () 
   if (interviewBusy) return;
   setInterviewBusy(true);
   state.interviewSessionId = null;
+  state.interviewHistory = [];
   clearChat();
   document.getElementById('interviewFinal').classList.add('hidden');
   document.getElementById('chatInputRow').classList.remove('hidden');
@@ -318,6 +320,7 @@ document.getElementById('startInterviewBtn').addEventListener('click', async () 
     });
 
     state.interviewSessionId = data.sessionId;
+    state.interviewHistory = [{ role: 'assistant', content: data.message }];
     completedStages.add('interview');
     hideTyping();
     appendMessage(data.message, 'agent');
@@ -348,10 +351,18 @@ async function sendAnswer() {
     const data = await apiFetch('/api/interview/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: state.interviewSessionId, message: text }),
+      body: JSON.stringify({
+        sessionId: state.interviewSessionId,
+        message: text,
+        cv: state.cv,
+        job: state.job,
+        history: state.interviewHistory,
+      }),
     });
 
     hideTyping();
+    state.interviewHistory.push({ role: 'user', content: text });
+    if (data.message) state.interviewHistory.push({ role: 'assistant', content: data.message });
     if (data.isFinal && data.evaluation) {
       showFinalEvaluation(data.evaluation);
     } else {

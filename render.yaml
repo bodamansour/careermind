@@ -1,4 +1,5 @@
 # Render Blueprint — New + > Blueprint, then pick this repo.
+# Optional per-agent AiMicromind URLs (CV_ANALYZER_URL, ...) can be added later.
 # Secrets marked "sync: false" are asked for in the Render dashboard.
 services:
   - type: web
@@ -10,20 +11,10 @@ services:
     healthCheckPath: /api/health
     plan: free
     envVars:
-      - key: CV_ANALYZER_URL
+      - key: OPENROUTER_API_KEY
         sync: false
-      - key: JOB_ANALYZER_URL
-        sync: false
-      - key: MATCHING_URL
-        sync: false
-      - key: SKILLGAP_URL
-        sync: false
-      - key: ROADMAP_URL
-        sync: false
-      - key: INTERVIEW_URL
-        sync: false
-      - key: AIMICROMIND_API_KEY
-        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
       - key: ADZUNA_APP_ID
         sync: false
       - key: ADZUNA_APP_KEY

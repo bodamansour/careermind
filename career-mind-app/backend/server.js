@@ -6,7 +6,7 @@ const path = require('path');
 const analyzeRoutes = require('./routes/analyze');
 const interviewRoutes = require('./routes/interview');
 const jobsRoutes = require('./routes/jobs');
-const { AGENTS, missingAgents } = require('./services/aimicromind');
+const { AGENTS, agentMode, missingAgents } = require('./services/agents');
 
 const app = express();
 app.use(cors());
@@ -14,10 +14,13 @@ app.use(express.json({ limit: '2mb' }));
 
 // Health check for Render / uptime monitors; also reports unconfigured agents.
 app.get('/api/health', (req, res) => {
-  const missing = missingAgents().map((key) => AGENTS[key].env);
+  const agents = {};
+  Object.keys(AGENTS).forEach((key) => {
+    agents[AGENTS[key].name] = agentMode(key) || 'not configured';
+  });
   res.json({
-    status: missing.length ? 'degraded' : 'ok',
-    missingConfig: missing,
+    status: missingAgents().length ? 'degraded' : 'ok',
+    agents,
     jobSearch: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
   });
 });
@@ -64,7 +67,8 @@ if (require.main === module) {
     if (missing.length) {
       console.warn(
         'Warning: these agents are not configured yet:',
-        missing.map((key) => AGENTS[key].env).join(', ')
+        missing.map((key) => AGENTS[key].name).join(', '),
+        '— set OPENROUTER_API_KEY in .env'
       );
     }
   });
