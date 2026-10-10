@@ -1,0 +1,32 @@
+# Render Blueprint — New + > Blueprint, then pick this repo.
+# Secrets marked "sync: false" are asked for in the Render dashboard.
+services:
+  - type: web
+    name: careermind-ai
+    runtime: node
+    rootDir: career-mind-app/backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: CV_ANALYZER_URL
+        sync: false
+      - key: JOB_ANALYZER_URL
+        sync: false
+      - key: MATCHING_URL
+        sync: false
+      - key: SKILLGAP_URL
+        sync: false
+      - key: ROADMAP_URL
+        sync: false
+      - key: INTERVIEW_URL
+        sync: false
+      - key: AIMICROMIND_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: ADZUNA_COUNTRY
+        value: gb

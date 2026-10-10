@@ -507,3 +507,6 @@ button:active { transform: scale(0.97); }
   border-color: var(--signal);
   transform: translateY(-1px);
 }
+
+.msg.agent.error { border-left-color: var(--danger); color: var(--danger); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
