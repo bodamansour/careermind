@@ -8,9 +8,14 @@ const MAX_ANSWER_LENGTH = 5000;
 const MAX_HISTORY = 40;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Number(null), Number('') and Number(true) are 0, 0 and 1, which would make
+// any reply carrying "overall_score": null look like a final evaluation.
+// Only real numbers and numeric strings ("85", "85%") count; clamp to 0-100.
 function toScore(value) {
+  if (typeof value === 'string') value = value.trim().replace(/%$/, '');
+  if (typeof value !== 'number' && (typeof value !== 'string' || value === '')) return null;
   const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : null;
 }
 
 // The agent's final message is a JSON evaluation. Detect it by trying to parse it.
@@ -22,7 +27,8 @@ function extractEvaluation(reply) {
   } catch (_) {
     return null; // not the final JSON yet - just a normal question/feedback message
   }
-  if (!parsed || typeof parsed !== 'object' || toScore(parsed.overall_score) == null) return null;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (toScore(parsed.overall_score) == null) return null;
 
   return {
     ...parsed,
@@ -103,3 +109,7 @@ router.post('/message', async (req, res, next) => {
 });
 
 module.exports = router;
+// Exported for unit tests.
+module.exports.toScore = toScore;
+module.exports.extractEvaluation = extractEvaluation;
+module.exports.validHistory = validHistory;
