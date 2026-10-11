@@ -1,0 +1,23 @@
+# Render Blueprint — New + > Blueprint, then pick this repo.
+# Optional per-agent AiMicromind URLs (CV_ANALYZER_URL, ...) can be added later.
+# Secrets marked "sync: false" are asked for in the Render dashboard.
+services:
+  - type: web
+    name: careermind-ai
+    runtime: node
+    rootDir: career-mind-app/backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: ADZUNA_COUNTRY
+        value: gb

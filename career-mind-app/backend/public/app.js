@@ -24,6 +24,56 @@ function toast(message, type = 'info') {
   }, 4000);
 }
 
+// ---------- HELPERS ----------
+// Fetch JSON and turn every failure (network, timeout page, non-JSON body)
+// into an Error with a readable message.
+async function apiFetch(url, options) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (_) {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    /* non-JSON body, e.g. a platform timeout page */
+  }
+
+  if (!res.ok) {
+    if (data && data.error) throw new Error(data.error);
+    if (res.status === 413) throw new Error('The upload is too large (max 4 MB).');
+    if (res.status === 504) throw new Error('The analysis took too long. Please try again.');
+    throw new Error(`Server error (HTTP ${res.status}). Please try again.`);
+  }
+  if (!data) throw new Error('The server sent an unexpected response.');
+  return data;
+}
+
+// Scores may come back from the models as strings; keep them numeric 0-100.
+function toScore(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
+}
+
+// Agents usually return skills as strings, but sometimes as objects.
+function skillLabel(skill) {
+  if (skill == null) return '';
+  if (typeof skill !== 'object') return String(skill);
+  return skill.skill || skill.name || skill.title || JSON.stringify(skill);
+}
+
+function fillList(listEl, items) {
+  listEl.innerHTML = '';
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const li = document.createElement('li');
+    li.textContent = skillLabel(item);
+    listEl.appendChild(li);
+  });
+}
+
 let state = {
   cv: null,
   job: null,
@@ -31,6 +81,7 @@ let state = {
   skillGap: null,
   roadmap: null,
   interviewSessionId: null,
+  interviewHistory: [],
   interviewScore: null,
 };
 
@@ -118,6 +169,11 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   formData.append('cvFile', cvFileInput.files[0]);
   formData.append('jdText', jdText);
 
+  if (cvFileInput.files[0].size > 4 * 1024 * 1024) {
+    toast('CV file is too large (max 4 MB).', 'error');
+    return;
+  }
+
   show('loading');
   let step = 0;
   const loadingText = document.getElementById('loadingText');
@@ -127,11 +183,11 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   }, 1800);
 
   try {
-    const res = await fetch('/api/full-analysis', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+    const data = await apiFetch('/api/full-analysis', { method: 'POST', body: formData });
 
     state.cv = data.cv;
+    state.interviewSessionId = null;
+    state.interviewScore = null;
     state.job = data.job;
     state.matching = data.matching;
     state.skillGap = data.skillGap;
@@ -153,7 +209,7 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
 const GAUGE_CIRCUMFERENCE = 327; // 2 * PI * 52
 
 function renderDashboard() {
-  const jobMatch = state.matching.job_match_score ?? 0;
+  const jobMatch = toScore(state.matching?.job_match_score) ?? 0;
   const interviewScore = state.interviewScore;
   const readiness = interviewScore != null
     ? Math.round((jobMatch + interviewScore) / 2)
@@ -167,21 +223,8 @@ function renderDashboard() {
   const offset = GAUGE_CIRCUMFERENCE - (GAUGE_CIRCUMFERENCE * readiness) / 100;
   document.getElementById('gaugeFill').style.strokeDashoffset = offset;
 
-  const matchingList = document.getElementById('matchingSkillsList');
-  matchingList.innerHTML = '';
-  (state.matching.matching_skills || []).forEach((skill) => {
-    const li = document.createElement('li');
-    li.textContent = skill;
-    matchingList.appendChild(li);
-  });
-
-  const missingList = document.getElementById('missingSkillsList');
-  missingList.innerHTML = '';
-  (state.matching.missing_skills || []).forEach((skill) => {
-    const li = document.createElement('li');
-    li.textContent = skill;
-    missingList.appendChild(li);
-  });
+  fillList(document.getElementById('matchingSkillsList'), state.matching?.matching_skills);
+  fillList(document.getElementById('missingSkillsList'), state.matching?.missing_skills);
 }
 
 // ---------- CAREER PLAN ----------
@@ -189,32 +232,38 @@ document.getElementById('viewPlanBtn').addEventListener('click', () => {
   const container = document.getElementById('planWeeks');
   container.innerHTML = '';
 
-  (state.roadmap.weeks || []).forEach((week) => {
+  const weeks = Array.isArray(state.roadmap) ? state.roadmap : state.roadmap?.weeks;
+  if (!Array.isArray(weeks) || weeks.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'The Roadmap Agent did not return any weeks. Try running the analysis again.';
+    container.appendChild(empty);
+  }
+
+  (weeks || []).forEach((week, i) => {
     const block = document.createElement('div');
     block.className = 'week-block';
 
     const title = document.createElement('h4');
-    title.textContent = `WEEK ${week.week_number} — ${week.focus}`;
+    title.textContent = `WEEK ${week.week_number ?? i + 1} — ${week.focus || 'Focus'}`;
     block.appendChild(title);
 
     const topicsList = document.createElement('ul');
-    (week.topics || []).forEach((t) => {
-      const li = document.createElement('li');
-      li.textContent = t;
-      topicsList.appendChild(li);
-    });
+    fillList(topicsList, week.topics);
     block.appendChild(topicsList);
 
-    const project = document.createElement('div');
-    project.className = 'project';
-    project.textContent = `Project: ${week.project}`;
-    block.appendChild(project);
+    if (week.project) {
+      const project = document.createElement('div');
+      project.className = 'project';
+      project.textContent = `Project: ${skillLabel(week.project)}`;
+      block.appendChild(project);
+    }
 
     container.appendChild(block);
   });
 
-  show('plan');
   completedStages.add('plan');
+  show('plan');
 });
 
 // ---------- INTERVIEW ----------
@@ -244,7 +293,19 @@ function appendMessage(text, sender) {
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
+let interviewBusy = false;
+const sendAnswerBtn = document.getElementById('sendAnswerBtn');
+
+function setInterviewBusy(busy) {
+  interviewBusy = busy;
+  sendAnswerBtn.disabled = busy;
+}
+
 document.getElementById('startInterviewBtn').addEventListener('click', async () => {
+  if (interviewBusy) return;
+  setInterviewBusy(true);
+  state.interviewSessionId = null;
+  state.interviewHistory = [];
   clearChat();
   document.getElementById('interviewFinal').classList.add('hidden');
   document.getElementById('chatInputRow').classList.remove('hidden');
@@ -252,48 +313,56 @@ document.getElementById('startInterviewBtn').addEventListener('click', async () 
   showTyping();
 
   try {
-    const res = await fetch('/api/interview/start', {
+    const data = await apiFetch('/api/interview/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cv: state.cv, job: state.job }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
 
     state.interviewSessionId = data.sessionId;
+    state.interviewHistory = [{ role: 'assistant', content: data.message }];
     completedStages.add('interview');
     hideTyping();
     appendMessage(data.message, 'agent');
   } catch (err) {
     hideTyping();
-    appendMessage('Error starting interview: ' + err.message, 'agent');
+    appendMessage('Error starting interview: ' + err.message, 'agent error');
     toast(err.message, 'error');
+  } finally {
+    setInterviewBusy(false);
   }
 });
 
-document.getElementById('sendAnswerBtn').addEventListener('click', sendAnswer);
+sendAnswerBtn.addEventListener('click', sendAnswer);
 chatInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendAnswer();
+  if (e.key === 'Enter' && !e.isComposing) sendAnswer();
 });
 
 async function sendAnswer() {
   const text = chatInput.value.trim();
-  if (!text || !state.interviewSessionId) return;
+  if (!text || !state.interviewSessionId || interviewBusy) return;
 
+  setInterviewBusy(true);
   appendMessage(text, 'user');
   chatInput.value = '';
   showTyping();
 
   try {
-    const res = await fetch('/api/interview/message', {
+    const data = await apiFetch('/api/interview/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: state.interviewSessionId, message: text }),
+      body: JSON.stringify({
+        sessionId: state.interviewSessionId,
+        message: text,
+        cv: state.cv,
+        job: state.job,
+        history: state.interviewHistory,
+      }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
 
     hideTyping();
+    state.interviewHistory.push({ role: 'user', content: text });
+    if (data.message) state.interviewHistory.push({ role: 'assistant', content: data.message });
     if (data.isFinal && data.evaluation) {
       showFinalEvaluation(data.evaluation);
     } else {
@@ -301,8 +370,12 @@ async function sendAnswer() {
     }
   } catch (err) {
     hideTyping();
-    appendMessage('Error: ' + err.message, 'agent');
+    // Give the answer back so the candidate doesn't have to retype it.
+    if (!chatInput.value) chatInput.value = text;
+    appendMessage('Error: ' + err.message, 'agent error');
     toast(err.message, 'error');
+  } finally {
+    setInterviewBusy(false);
   }
 }
 
@@ -311,33 +384,52 @@ function showFinalEvaluation(evalData) {
   const finalSection = document.getElementById('interviewFinal');
   finalSection.classList.remove('hidden');
 
-  state.interviewScore = evalData.overall_score;
+  state.interviewScore = toScore(evalData.overall_score);
 
+  // Built with textContent: the model's text must never be parsed as HTML.
   const container = document.getElementById('finalScores');
-  container.innerHTML = `
-    <div class="metric-list">
-      <div class="metric-row"><span>Technical</span><span class="mono">${evalData.technical_score}</span></div>
-      <div class="metric-row"><span>Communication</span><span class="mono">${evalData.communication_score}</span></div>
-      <div class="metric-row"><span>Completeness</span><span class="mono">${evalData.completeness_score}</span></div>
-      <div class="metric-row"><span>Overall</span><span class="mono">${evalData.overall_score}</span></div>
-    </div>
-    <h4 style="margin-top:16px;">Strengths</h4>
-    <ul>${(evalData.strengths || []).map((s) => `<li>${s}</li>`).join('')}</ul>
-    <h4>Areas to improve</h4>
-    <ul>${(evalData.areas_to_improve || []).map((s) => `<li>${s}</li>`).join('')}</ul>
-  `;
+  container.innerHTML = '';
+
+  const metrics = document.createElement('div');
+  metrics.className = 'metric-list';
+  [
+    ['Technical', evalData.technical_score],
+    ['Communication', evalData.communication_score],
+    ['Completeness', evalData.completeness_score],
+    ['Overall', evalData.overall_score],
+  ].forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'metric-row';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const score = document.createElement('span');
+    score.className = 'mono';
+    score.textContent = toScore(value) ?? '—';
+    row.append(name, score);
+    metrics.appendChild(row);
+  });
+  container.appendChild(metrics);
+
+  [['Strengths', evalData.strengths], ['Areas to improve', evalData.areas_to_improve]].forEach(
+    ([heading, items]) => {
+      const h = document.createElement('h4');
+      h.textContent = heading;
+      h.style.marginTop = '16px';
+      const ul = document.createElement('ul');
+      fillList(ul, items);
+      container.append(h, ul);
+    }
+  );
 
   renderDashboard();
 }
 
 // ---------- JOBS ----------
 document.getElementById('viewJobsBtn').addEventListener('click', () => {
-  const topSkill = (state.matching.matching_skills || [])[0]
-    || state.job?.job_title
-    || '';
+  const topSkill = skillLabel((state.matching?.matching_skills || [])[0]);
   document.getElementById('jobQuery').value = state.job?.job_title || topSkill || '';
-  show('jobs');
   completedStages.add('jobs');
+  show('jobs');
   searchJobs();
 });
 
@@ -360,9 +452,7 @@ async function searchJobs() {
   }
 
   try {
-    const res = await fetch(`/api/jobs/search?q=${encodeURIComponent(query)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Job search failed.');
+    const data = await apiFetch(`/api/jobs/search?q=${encodeURIComponent(query)}`);
 
     listEl.innerHTML = '';
     if (!data.jobs || data.jobs.length === 0) {
@@ -373,15 +463,27 @@ async function searchJobs() {
     data.jobs.forEach((job) => {
       const card = document.createElement('div');
       card.className = 'job-card';
-      card.innerHTML = `
-        <h4>${job.title}</h4>
-        <div class="job-company">${job.company} — ${job.location}</div>
-        <a href="${job.url}" target="_blank" rel="noopener">View posting →</a>
-      `;
+      const title = document.createElement('h4');
+      title.textContent = job.title;
+      const company = document.createElement('div');
+      company.className = 'job-company';
+      company.textContent = `${job.company} — ${job.location}`;
+      card.append(title, company);
+
+      // Only link to real web URLs (never javascript: or data: links).
+      if (/^https?:\/\//i.test(job.url || '')) {
+        const link = document.createElement('a');
+        link.href = job.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'View posting →';
+        card.appendChild(link);
+      }
       listEl.appendChild(card);
     });
   } catch (err) {
     listEl.innerHTML = '';
+    errorEl.textContent = err.message;
     toast(err.message, 'error');
   }
 }
