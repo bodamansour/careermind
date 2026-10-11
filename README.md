@@ -197,6 +197,19 @@ Open **http://localhost:3000**. To check your setup, open
 **http://localhost:3000/api/health**. It lists any agent URL that is still missing.
 The server also prints a warning on startup.
 
+For development, `npm run dev` restarts the server when a file changes.
+
+### 4. Test
+
+```bash
+npm test
+```
+
+Runs the unit tests in `test/` with Node's built-in test runner (no extra
+dependencies). They cover JSON parsing of agent replies, score handling, final
+interview detection and interview-history validation. GitHub Actions runs the
+same command on every pull request and push to `main`.
+
 ## Configuration
 
 | Variable | Required | Description |
