@@ -197,6 +197,19 @@ Open **http://localhost:3000**. To check your setup, open
 **http://localhost:3000/api/health**. It lists any agent URL that is still missing.
 The server also prints a warning on startup.
 
+For development, `npm run dev` restarts the server when a file changes.
+
+### 4. Test
+
+```bash
+npm test
+```
+
+Runs the unit tests in `test/` with Node's built-in test runner (no extra
+dependencies). They cover JSON parsing of agent replies, score handling, final
+interview detection and interview-history validation. GitHub Actions runs the
+same command on every pull request and push to `main`.
+
 ## Configuration
 
 | Variable | Required | Description |
@@ -209,6 +222,14 @@ The server also prints a warning on startup.
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
 | `FLOW_TIMEOUT_MS` | – | Max wait per agent call in ms. Default `90000` |
 | `PORT` | – | Local port. Default `3000` (Render sets this for you) |
+| `RATE_LIMIT_ANALYSES_PER_HOUR` | – | Full analyses allowed per visitor IP per hour. Default `10`, `0` turns the limit off |
+| `RATE_LIMIT_INTERVIEW_MESSAGES_PER_HOUR` | – | Interview messages per IP per hour. Default `100` |
+| `RATE_LIMIT_JOB_SEARCHES_PER_HOUR` | – | Job searches per IP per hour. Default `60` |
+
+> **Rate limits:** every analysis and interview turn spends LLM credits, so the
+> API answers `429` once a visitor passes these limits. The counts are kept in
+> memory, so on Vercel each running instance counts separately: they stop bursts
+> and scripts, not an exact global quota.
 
 > **Job search:** LinkedIn has no public API for personalized job recommendations,
 > so CareerMind uses Adzuna, which aggregates listings from many sources. Egypt is not
