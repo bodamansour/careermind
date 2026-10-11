@@ -7,8 +7,12 @@ const analyzeRoutes = require('./routes/analyze');
 const interviewRoutes = require('./routes/interview');
 const jobsRoutes = require('./routes/jobs');
 const { AGENTS, agentMode, missingAgents } = require('./services/agents');
+const { rateLimit, envLimit } = require('./services/rateLimit');
 
 const app = express();
+// Vercel and Render sit one proxy in front of the app; trusting that hop makes
+// req.ip the visitor's address (used by the rate limits below).
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
@@ -24,6 +28,24 @@ app.get('/api/health', (req, res) => {
     jobSearch: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
   });
 });
+
+// Each of these calls spends LLM or API credits. Set a limit to 0 to disable it.
+const HOUR = 60 * 60 * 1000;
+app.use('/api/full-analysis', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_ANALYSES_PER_HOUR', 10),
+  message: 'Too many analyses from this connection. Please try again in an hour.',
+}));
+app.use('/api/interview', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_INTERVIEW_MESSAGES_PER_HOUR', 100),
+  message: 'Too many interview messages from this connection. Please try again later.',
+}));
+app.use('/api/jobs', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_JOB_SEARCHES_PER_HOUR', 60),
+  message: 'Too many job searches from this connection. Please try again later.',
+}));
 
 app.use('/api', analyzeRoutes);
 app.use('/api/interview', interviewRoutes);
