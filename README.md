@@ -222,6 +222,14 @@ same command on every pull request and push to `main`.
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
 | `FLOW_TIMEOUT_MS` | – | Max wait per agent call in ms. Default `90000` |
 | `PORT` | – | Local port. Default `3000` (Render sets this for you) |
+| `RATE_LIMIT_ANALYSES_PER_HOUR` | – | Full analyses allowed per visitor IP per hour. Default `10`, `0` turns the limit off |
+| `RATE_LIMIT_INTERVIEW_MESSAGES_PER_HOUR` | – | Interview messages per IP per hour. Default `100` |
+| `RATE_LIMIT_JOB_SEARCHES_PER_HOUR` | – | Job searches per IP per hour. Default `60` |
+
+> **Rate limits:** every analysis and interview turn spends LLM credits, so the
+> API answers `429` once a visitor passes these limits. The counts are kept in
+> memory, so on Vercel each running instance counts separately: they stop bursts
+> and scripts, not an exact global quota.
 
 > **Job search:** LinkedIn has no public API for personalized job recommendations,
 > so CareerMind uses Adzuna, which aggregates listings from many sources. Egypt is not
