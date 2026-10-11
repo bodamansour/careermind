@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  app:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -20,3 +20,18 @@ jobs:
           cache-dependency-path: career-mind-app/backend/package-lock.json
       - run: npm ci
       - run: npm test
+
+  automations:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workflow: [job-hunter, applicant-screening]
+    defaults:
+      run:
+        working-directory: automations/${{ matrix.workflow }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test tests/*.test.mjs
