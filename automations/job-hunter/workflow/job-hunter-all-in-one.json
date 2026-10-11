@@ -1,0 +1,2440 @@
+{
+  "name": "Job Hunter – All in One",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "7359eb86-457c-4c5e-a7de-13c7303aa250",
+      "name": "Daily 8 AM Search",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        64,
+        464
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "cd22237f-4bdc-4465-b934-2ad7b0e391ba",
+      "name": "Test Search",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        64,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_settings"
+        },
+        "limit": 1,
+        "orderBy": true
+      },
+      "id": "809c5c93-43d7-47e3-b28f-48d829564703",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "applied_at",
+              "condition": "gte",
+              "keyValue": "={{ $today.toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "32be6444-492e-4f3b-a0ff-e7023b0f8d07",
+      "name": "Count Today Applications",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        560
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://remotive.com/api/remote-jobs",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "300"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "0be13ce5-f495-44cf-970a-5c0ea1776a3a",
+      "name": "Fetch Remotive Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        560
+      ],
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://remoteok.com/api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-job-hunter/1.0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "647ba4c9-be87-4bd2-b9e1-c8e251b57408",
+      "name": "Fetch RemoteOK Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        944,
+        560
+      ],
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.arbeitnow.com/api/job-board-api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "11710b76-cc64-412a-88a5-c015d9c7fd2c",
+      "name": "Fetch Arbeitnow Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        560
+      ],
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://weworkremotely.com/remote-jobs.rss",
+        "options": {}
+      },
+      "id": "d46c75e2-9e5a-47e5-864a-84cfb37f2e28",
+      "name": "Fetch WeWorkRemotely RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        1392,
+        560
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings').first().json;\nconst list = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);\nconst out = [];\nlist(S.greenhouse_boards).forEach(b => out.push({ json: { kind: 'greenhouse', board: b, url: 'https://boards-api.greenhouse.io/v1/boards/' + encodeURIComponent(b) + '/jobs?content=true' } }));\nlist(S.lever_boards).forEach(b => out.push({ json: { kind: 'lever', board: b, url: 'https://api.lever.co/v0/postings/' + encodeURIComponent(b) + '?mode=json' } }));\nreturn out;"
+      },
+      "id": "b5295cd9-3d3c-4a1b-83eb-dec7e4d5b217",
+      "name": "Build Company Board URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "cedc2c5b-8a1f-4a57-81e7-19d6a1008f9c",
+      "name": "Fetch Company Boards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1824,
+        272
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings').first().json;\nreturn String(S.extra_rss_feeds || '').split(',').map(x => x.trim()).filter(Boolean).map(url => ({ json: { url } }));"
+      },
+      "id": "c0b53202-29aa-488f-a2c2-bcee84318271",
+      "name": "Build Custom RSS List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "14919dc4-48f7-4032-a351-b1a1d0f10779",
+      "name": "Read Custom RSS Feeds",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        1824,
+        432
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings').first().json;\nconst lower = v => String(v == null ? '' : v).toLowerCase();\nconst list = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);\nconst norm = t => ' ' + lower(t).replace(/[^a-z0-9؀-ۿ+#]+/g, ' ').trim() + ' ';\nconst hasAny = (text, kws) => { const n = norm(text); return kws.some(k => { const nk = norm(k); return nk.trim() && n.includes(nk); }); };\nconst decode = h => String(h || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\nconst strip = h => decode(h).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\nconst safe = name => { try { return $(name).all().map(i => i.json).filter(j => j && !j.error); } catch (e) { return []; } };\nconst targets = list(S.target_keywords);\nconst excludes = list(S.exclude_keywords);\nconst locs = list(S.locations);\nconst regions = list(S.remote_regions);\nconst hours = Number(S.hours_window) || 24;\nconst now = Date.now();\nconst SKILLS = ['python','java','javascript','typescript','c++','c#','sql','linux','bash','powershell','networking','ccna','ccnp','tcp/ip','routing','switching','firewall','siem','splunk','qradar','wireshark','nmap','burp','owasp','penetration testing','incident response','soc','threat','vulnerability','iso 27001','security+','aws','azure','gcp','docker','kubernetes','terraform','ansible','ci/cd','git','react','node','node.js','express','django','flask','fastapi','rest api','n8n','zapier','make.com','automation','machine learning','deep learning','pytorch','tensorflow','scikit-learn','nlp','computer vision','llm','langchain','rag','prompt engineering','openai','agents','pandas','numpy','data analysis','power bi','excel','active directory','windows server','troubleshooting','itil','help desk','cloud','devops','mlops','statistics','communication','english'];\nconst parseSalary = t => {\n  const s = String(t || '').replace(/,/g, '');\n  if (!/\\d/.test(s)) return {};\n  const cur = /€|eur/i.test(s) ? 'EUR' : /£|gbp/i.test(s) ? 'GBP' : /egp|جنيه/i.test(s) ? 'EGP' : /\\$|usd/i.test(s) ? 'USD' : '';\n  const nums = (s.match(/\\d+(?:\\.\\d+)?\\s*k?/gi) || []).map(x => parseFloat(x) * (/k/i.test(x) ? 1000 : 1)).filter(n => n >= 100);\n  if (!nums.length) return {};\n  const period = /hour|hr\\b|\\/h\\b/i.test(s) ? 'hour' : /month|\\/mo|شهر/i.test(s) ? 'month' : 'year';\n  const two = nums.slice(0, 2);\n  return { min: Math.min(...two), max: Math.max(...two), cur, period };\n};\nconst raw = [];\nfor (const r of safe('Fetch Remotive Jobs')) for (const j of (r.jobs || [])) raw.push({ source: 'remotive', id: j.id, title: j.title, company: j.company_name, location: j.candidate_required_location, work_mode: 'remote', salaryText: j.salary, posted: j.publication_date, url: j.url, desc: j.description, tags: j.tags });\nfor (const j of safe('Fetch RemoteOK Jobs')) if (j.id && j.position) raw.push({ source: 'remoteok', id: j.id, title: j.position, company: j.company, location: j.location || 'Remote', work_mode: 'remote', salary_min: Number(j.salary_min) || null, salary_max: Number(j.salary_max) || null, currency: (Number(j.salary_min) || Number(j.salary_max)) ? 'USD' : '', period: 'year', posted: j.date, url: j.apply_url || j.url, desc: j.description, tags: j.tags });\nfor (const r of safe('Fetch Arbeitnow Jobs')) for (const j of (r.data || [])) raw.push({ source: 'arbeitnow', id: j.slug, title: j.title, company: j.company_name, location: j.location, work_mode: j.remote ? 'remote' : 'onsite', posted: j.created_at ? j.created_at * 1000 : null, url: j.url, desc: j.description, tags: j.tags });\nfor (const j of safe('Fetch WeWorkRemotely RSS')) if (j.title && j.link) { const parts = String(j.title).split(': '); raw.push({ source: 'weworkremotely', id: j.guid || j.link, title: parts.length > 1 ? parts.slice(1).join(': ') : j.title, company: parts.length > 1 ? parts[0] : '', location: 'Remote', work_mode: 'remote', posted: j.isoDate || j.pubDate, url: j.link, desc: j.content || j.contentSnippet }); }\nfor (const r of safe('Fetch Company Boards')) {\n  if (Array.isArray(r.jobs)) { for (const j of r.jobs) { const ln = (j.location && j.location.name) || ''; raw.push({ source: 'greenhouse', id: j.id, title: j.title, company: j.company_name || '', location: ln, work_mode: /remote/i.test(ln) ? 'remote' : 'onsite', posted: j.first_published || j.updated_at, url: j.absolute_url, desc: j.content }); } }\n  else if (r.hostedUrl) { raw.push({ source: 'lever', id: r.id, title: r.text, company: String(r.hostedUrl).split('/')[3] || '', location: r.categories && r.categories.location, work_mode: r.workplaceType || '', posted: r.createdAt, url: r.applyUrl || r.hostedUrl, desc: (r.descriptionPlain || '') + ' ' + (r.additionalPlain || '') + ' ' + JSON.stringify(r.lists || []) }); }\n}\nfor (const j of safe('Read Custom RSS Feeds')) if (j.title && j.link) raw.push({ source: 'rss', id: j.guid || j.link, title: j.title, company: j.creator || '', location: '', work_mode: '', posted: j.isoDate || j.pubDate, url: j.link, desc: j.content || j.contentSnippet });\nconst seenKey = new Set();\nconst seenDedup = new Set();\nconst out = [];\nfor (const j of raw) {\n  if (!j.title || !j.url) continue;\n  if (j.expired === true) continue;\n  const title = strip(j.title);\n  if (!hasAny(title, targets) || hasAny(title, excludes)) continue;\n  const location = strip(j.location || '');\n  const remote = j.work_mode === 'remote' || /remote|anywhere|worldwide|عن بعد/i.test(location);\n  const inLoc = hasAny(location, locs);\n  const remoteOk = remote && S.remote_ok !== false && (!location || /^remote$/i.test(location) || hasAny(location, regions));\n  if (!inLoc && !remoteOk) continue;\n  const pv = (typeof j.posted === 'string' && /^\\d+$/.test(j.posted)) ? Number(j.posted) : j.posted;\n  const t = pv ? new Date(pv).getTime() : NaN;\n  if (!isFinite(t)) continue;\n  const ageH = (now - t) / 3600000;\n  if (ageH > 24 * 30 || ageH < -48) continue;\n  const desc = strip(j.desc).slice(0, 3500);\n  const key = (j.source + ':' + String(j.id || j.url)).toLowerCase().slice(0, 250);\n  const dkey = (norm(title).trim() + '|' + norm(j.company).trim()).slice(0, 250);\n  if (seenKey.has(key) || seenDedup.has(dkey)) continue;\n  seenKey.add(key);\n  seenDedup.add(dkey);\n  let sal = { min: j.salary_min || null, max: j.salary_max || null, cur: j.currency || '', period: j.period || '' };\n  if (!sal.min && !sal.max) { const p = parseSalary(j.salaryText); if (p.min) sal = p; }\n  const hay = norm(title + ' ' + desc + ' ' + (Array.isArray(j.tags) ? j.tags.join(' ') : ''));\n  const skills = SKILLS.filter(k => hay.includes(norm(k)));\n  const emails = (desc.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi) || []).filter(e => !/no-?reply|privacy|example|abuse|unsubscribe|gdpr|dpo@|support@/i.test(e));\n  const applyEmail = (emails.length && /(send|email|apply|cv|resume|قدم|أرسل|ارسل)/i.test(desc)) ? emails[0].toLowerCase() : '';\n  const rank = targets.filter(k => hay.includes(norm(k))).length;\n  const mode = remote ? 'remote' : (/hybrid/i.test(location + ' ' + (j.work_mode || '')) ? 'hybrid' : (j.work_mode || 'onsite'));\n  out.push({ json: { job_key: key, dedup_key: dkey, source: j.source, title: title.slice(0, 200), company: strip(j.company).slice(0, 150), location: location.slice(0, 150) || (remote ? 'Remote' : ''), work_mode: String(mode).toLowerCase(), salary_min: sal.min, salary_max: sal.max, salary_currency: sal.cur || '', salary_period: (sal.min || sal.max) ? sal.period : '', posted_at: new Date(t).toISOString(), apply_url: j.url, apply_email: applyEmail, skills: skills.join(', '), is_fresh: ageH <= hours, description: desc, rank, fetched_total: raw.length } });\n}\nreturn out;"
+      },
+      "id": "f6a8c777-9af0-4be5-84b4-15dc37248257",
+      "name": "Normalize & Filter Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_key",
+              "keyValue": "={{ $json.job_key }}"
+            },
+            {
+              "keyName": "dedup_key",
+              "keyValue": "={{ $json.dedup_key }}"
+            }
+          ]
+        }
+      },
+      "id": "1f4faf7c-442e-41bf-ab0f-bf15b33dec24",
+      "name": "Keep Only New Jobs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1824,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_key": "={{ $json.job_key }}",
+            "dedup_key": "={{ $json.dedup_key }}",
+            "source": "={{ $json.source }}",
+            "title": "={{ $json.title }}",
+            "company": "={{ $json.company }}",
+            "location": "={{ $json.location }}",
+            "work_mode": "={{ $json.work_mode }}",
+            "salary_min": "={{ $json.salary_min }}",
+            "salary_max": "={{ $json.salary_max }}",
+            "salary_currency": "={{ $json.salary_currency }}",
+            "salary_period": "={{ $json.salary_period }}",
+            "posted_at": "={{ $json.posted_at }}",
+            "apply_url": "={{ $json.apply_url }}",
+            "apply_email": "={{ $json.apply_email }}",
+            "skills": "={{ $json.skills }}",
+            "is_fresh": "={{ $json.is_fresh }}",
+            "status": "={{ $json.is_fresh ? \"pending_score\" : \"archived_old\" }}",
+            "found_at": "={{ $now.toISO() }}",
+            "description": "={{ $json.description }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "job_key",
+              "id": "job_key",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "dedup_key",
+              "id": "dedup_key",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "source",
+              "id": "source",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "title",
+              "id": "title",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "company",
+              "id": "company",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "location",
+              "id": "location",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "work_mode",
+              "id": "work_mode",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "salary_min",
+              "id": "salary_min",
+              "required": false,
+              "type": "number"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "salary_max",
+              "id": "salary_max",
+              "required": false,
+              "type": "number"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "salary_currency",
+              "id": "salary_currency",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "salary_period",
+              "id": "salary_period",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "posted_at",
+              "id": "posted_at",
+              "required": false,
+              "type": "dateTime"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "apply_url",
+              "id": "apply_url",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "apply_email",
+              "id": "apply_email",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "skills",
+              "id": "skills",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "is_fresh",
+              "id": "is_fresh",
+              "required": false,
+              "type": "boolean"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "status",
+              "id": "status",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "found_at",
+              "id": "found_at",
+              "required": false,
+              "type": "dateTime"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "description",
+              "id": "description",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "542bebe4-08f7-4619-81b7-79e282265eb6",
+      "name": "Save New Jobs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2048,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings').first().json;\nif (!String(S.cv_text || '').trim()) { throw new Error('cv_text is empty in jh_settings - paste your CV text first so scoring is based on your real CV.'); }\nconst lower = v => String(v == null ? '' : v).toLowerCase();\nconst targets = String(S.target_keywords || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);\nconst seen = new Set();\nconst out = [];\nfor (const i of $input.all()) {\n  const r = i.json || {};\n  if (!r.id || !r.description) continue;\n  if (r.status !== 'pending_score' && r.status !== 'score_failed') continue;\n  const k = r.job_key || r.dedup_key;\n  if (seen.has(k)) continue;\n  seen.add(k);\n  const hay = lower(r.title + ' ' + r.description);\n  const rank = targets.filter(t => hay.includes(t)).length;\n  out.push({ json: Object.assign({}, r, { row_id: r.id, rank }) });\n}\nout.sort((a, b) => b.json.rank - a.json.rank);\nreturn out.slice(0, 40);"
+      },
+      "id": "c287f778-21e9-4df3-9d24-7fa15f12a40e",
+      "name": "Prepare Jobs For Scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {
+          "maxOutputTokens": 600,
+          "temperature": 0.1
+        }
+      },
+      "id": "4dba14d8-689e-4b14-b3d9-cc6d86e447a9",
+      "name": "Gemini Scoring Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        864
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"score\": 72,\n  \"reason_ar\": \"سبب مختصر بالعربي\",\n  \"meets_level\": true\n}"
+      },
+      "id": "67ef5eca-fa06-4a76-8419-f8781fbed946",
+      "name": "Score JSON Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=CANDIDATE CV (the only source of truth about the candidate):\n{{ $('Load Settings').first().json.cv_text }}\n\nCANDIDATE CONDITIONS:\n- Target roles: {{ $('Load Settings').first().json.target_keywords }}\n- Level: university student (penultimate year) seeking internship / entry-level / junior / graduate roles only. Roles needing 2+ years of professional experience or senior level must score below 50.\n- Accepted locations: {{ $('Load Settings').first().json.locations }}; remote accepted: {{ $('Load Settings').first().json.remote_ok }}\n- Minimum salary: {{ $('Load Settings').first().json.min_salary }} {{ $('Load Settings').first().json.min_salary_currency }} per {{ $('Load Settings').first().json.min_salary_period }} (0 means no minimum)\n\nJOB POSTING:\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }} ({{ $json.work_mode }})\nSalary: {{ $json.salary_min || \"not stated\" }} - {{ $json.salary_max || \"\" }} {{ $json.salary_currency }} {{ $json.salary_period }}\nDescription: {{ $json.description }}\n\nTASK: Score 0-100 how well this job fits the candidate. Give 80+ only when the CV clearly covers the core requirements AND the level/location/salary conditions are met. Do not assume skills that are not written in the CV. reason_ar = one short Arabic sentence (max 25 words). meets_level = false if the job needs more seniority than the candidate has.",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a strict, honest job-matching assistant. Judge only from the provided CV and posting. Never invent candidate experience. Calibrate conservatively: the candidate's professional experience is only a 1-week internship plus personal projects. 90-100 = nearly every stated requirement is explicitly evidenced in the CV and the role is clearly intern/junior level; 80-89 = core requirements evidenced with minor gaps; 60-79 = partial fit; below 60 = weak fit, wrong field, or seniority above junior. Roles outside software/AI/data/automation/IT (e.g. design, video, sales) must score below 40."
+            }
+          ]
+        },
+        "batching": {
+          "batchSize": 1,
+          "delayBetweenBatches": 4000
+        }
+      },
+      "id": "e839d1c8-ece7-495c-8788-1c7c1956dc1b",
+      "name": "Score Job Match",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        2480,
+        640
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings').first().json;\nconst jobs = $('Prepare Jobs For Scoring').all();\nconst res = $input.all();\nconst maxApps = Number(S.max_daily_applications) || 5;\nconst th = Number(S.auto_apply_threshold) || 80;\nconst already = $('Count Today Applications').all().filter(i => i.json && i.json.id).length;\nlet quota = Math.max(0, maxApps - already);\nconst enabled = S.auto_apply_enabled === true;\nconst hasCv = !!String(S.cv_pdf_url || '').trim();\nconst minSal = Number(S.min_salary) || 0;\nconst salaryOk = j => {\n  if (!minSal || (!j.salary_min && !j.salary_max)) return true;\n  if (String(j.salary_currency).toUpperCase() !== String(S.min_salary_currency || '').toUpperCase() || j.salary_period !== S.min_salary_period) return true;\n  return (Number(j.salary_max) || Number(j.salary_min)) >= minSal;\n};\nconst merged = jobs.map((j, i) => {\n  const o = (res[i] && res[i].json && res[i].json.output) || {};\n  const scored = o.score !== undefined && o.score !== null;\n  return Object.assign({}, j.json, { score: scored ? Math.max(0, Math.min(100, Math.round(Number(o.score) || 0))) : 0, reason: scored ? String(o.reason_ar || '').slice(0, 300) : 'تعذّر التقييم الآلي لهذه الوظيفة', meets_level: o.meets_level !== false, scored });\n});\nmerged.sort((a, b) => b.score - a.score);\nreturn merged.map(j => {\n  let action = 'none';\n  let status = j.scored ? 'scored' : 'score_failed';\n  let note = '';\n  const salOk = salaryOk(j);\n  if (!salOk) note = 'الراتب المعلن أقل من الحد الأدنى';\n  if (j.score >= th && j.meets_level && salOk) {\n    action = 'manual';\n    status = 'needs_manual';\n    if (!j.apply_email) note = 'التقديم من موقع الجهة (نموذج أو تسجيل دخول)';\n    else if (!enabled) note = 'ابعت الـCV بالإيميل على ' + j.apply_email;\n    else if (!hasCv) note = 'رابط ملف الـCV (cv_pdf_url) غير مضبوط';\n    else if (quota <= 0) note = 'تم الوصول للحد اليومي للطلبات';\n    else { action = 'auto_apply'; status = 'applying'; quota -= 1; }\n  }\n  return { json: Object.assign({}, j, { action, status, status_note: note }) };\n});\n"
+      },
+      "id": "7109ea1a-6699-478a-bc15-100b3d42d2a3",
+      "name": "Plan Applications",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "27c42c19-0b45-4c45-a104-0303daa837e1",
+      "name": "Loop Jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2928,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_runs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_type": "search_apply",
+            "workflow_name": "={{ $workflow.name }}",
+            "execution_id": "={{ $execution.id }}",
+            "status": "ok",
+            "fetched_count": "={{ $('Normalize & Filter Jobs').first().json.fetched_total }}",
+            "new_count": "={{ $('Keep Only New Jobs').all().length }}",
+            "scored_count": "={{ $('Plan Applications').all().filter(i => i.json.scored).length }}",
+            "auto_applied_count": "={{ $('Plan Applications').all().filter(i => i.json.action === 'auto_apply').length }}",
+            "manual_count": "={{ $('Plan Applications').all().filter(i => i.json.action === 'manual').length }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_type",
+              "displayName": "run_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fetched_count",
+              "displayName": "fetched_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "new_count",
+              "displayName": "new_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scored_count",
+              "displayName": "scored_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "auto_applied_count",
+              "displayName": "auto_applied_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "manual_count",
+              "displayName": "manual_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "64485985-c4da-4e79-8178-2356b328a255",
+      "name": "Log Search Run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3152,
+        400
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dba549d3-8e9f-4390-ba6f-bd785acdc432",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "auto_apply",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "01f90e7e-99e3-4c63-9cfe-3e8fe11d151c",
+      "name": "Auto Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3152,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {
+          "maxOutputTokens": 900,
+          "temperature": 0.3
+        }
+      },
+      "id": "ffaf16e2-af20-4eb2-80dc-fa1c58f2252c",
+      "name": "Gemini Letter Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        864
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write the body of a short job-application email (120-180 words) for the job below. Write in English, or in Arabic if the job description is mainly Arabic.\n\nSTRICT RULES:\n- Use ONLY facts written in the CV. Do NOT invent or exaggerate experience, years, degrees, certifications, tools, projects or achievements.\n- The candidate is a university student (penultimate year); present him honestly at that level.\n- Mention 2-3 CV facts that genuinely match the posting. If a requirement is missing, do not claim it.\n- No subject line, no placeholders like [Company], plain text only.\n- Mention that the CV is attached. Sign with: {{ $('Load Settings').first().json.applicant_name }}{{ $('Load Settings').first().json.applicant_phone ? \" | \" + $('Load Settings').first().json.applicant_phone : \"\" }} | {{ $('Load Settings').first().json.applicant_email }}\n\nCV:\n{{ $('Load Settings').first().json.cv_text }}\n\nJOB:\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nDescription: {{ $json.description }}",
+        "batching": {
+          "batchSize": 1,
+          "delayBetweenBatches": 2000
+        }
+      },
+      "id": "31975ac7-a6d5-4cae-b154-07400c4b5bb7",
+      "name": "Write Cover Letter",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        3360,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Load Settings').first().json.cv_pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "321086b5-de2e-49a5-a0a5-cbc5ee0b5abe",
+      "name": "Download CV PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        640
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $('Loop Jobs').item.json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "email_sent_awaiting_confirmation",
+            "status_note": "اتبعت إيميل التقديم، ومستني رد أو تأكيد من الجهة",
+            "gmail_thread_id": "={{ $('Create Application Email').item.json.conversationId }}",
+            "applied_at": "={{ $now.toISO() }}",
+            "match_score": "={{ $('Loop Jobs').item.json.score }}",
+            "match_reason": "={{ $('Loop Jobs').item.json.reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_note",
+              "displayName": "status_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "gmail_thread_id",
+              "displayName": "gmail_thread_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "applied_at",
+              "displayName": "applied_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_reason",
+              "displayName": "match_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "871a3cc4-125f-4b51-907a-6e76ac9f5fd7",
+      "name": "Mark Email Sent",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4256,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.status }}",
+            "status_note": "={{ $json.status_note }}",
+            "match_score": "={{ $json.score }}",
+            "match_reason": "={{ $json.reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_note",
+              "displayName": "status_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_reason",
+              "displayName": "match_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "50840967-4709-4edc-b06a-f65671127879",
+      "name": "Save Score & Status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4256,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "e223153f-2528-45dd-91b0-df21e403565d",
+      "name": "Daily 9 AM Report",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        64,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_settings"
+        },
+        "limit": 1,
+        "orderBy": true
+      },
+      "id": "90099d4f-cd24-4c73-b3f7-269f482a96c8",
+      "name": "Load Settings (Report)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        1568
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "email_sent_awaiting_confirmation"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "9ba1d58b-f3c4-4260-a734-2283e2274b6f",
+      "name": "Get Awaiting Confirmation",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        1568
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 250,
+        "output": "fields",
+        "fields": [
+          "conversationId",
+          "from",
+          "subject",
+          "bodyPreview",
+          "receivedDateTime"
+        ],
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "readStatus": "both",
+              "receivedAfter": "={{ $now.minus(21, 'days').toISO() }}"
+            }
+          }
+        },
+        "options": {}
+      },
+      "id": "bba2a429-bfcf-464c-b7c5-a7e7e882090b",
+      "name": "Check Outlook Replies",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        720,
+        1568
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "webhookId": "d21a6329-8d37-46db-9607-f6f7a15fc4b3",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings (Report)').first().json;\nconst lower = v => String(v == null ? '' : v).toLowerCase();\nconst me = lower(S.applicant_email);\nconst safe = name => { try { return $(name).all().map(i => i.json).filter(j => j && !j.error); } catch (e) { return []; } };\nconst pending = safe('Get Awaiting Confirmation').filter(j => j.id && j.gmail_thread_id);\nconst msgs = safe('Check Outlook Replies');\nconst out = [];\nfor (const p of pending) {\n  const replies = msgs.filter(m => m.conversationId === p.gmail_thread_id && lower(m.from && m.from.emailAddress && m.from.emailAddress.address) !== me);\n  if (!replies.length) continue;\n  const bounce = replies.find(m => /mailer-daemon|postmaster|undeliverable|delivery has failed|delivery status notification|لم يتم التسليم/i.test(lower(m.from && m.from.emailAddress && m.from.emailAddress.address) + ' ' + (m.subject || '')));\n  if (bounce) { out.push({ json: { row_id: p.id, status: 'needs_manual', status_note: 'إيميل التقديم رجع (Bounce)، قدّم يدويًا من الرابط', confirmation_ref: '', confirmed_at: new Date().toISOString() } }); continue; }\n  replies.sort((a, b) => new Date(a.receivedDateTime) - new Date(b.receivedDateTime));\n  const r = replies[0];\n  const text = (r.subject || '') + ' ' + (r.bodyPreview || '');\n  const m = text.match(/(?:reference|ref\\.?|application (?:id|number|no\\.?)|confirmation (?:number|no\\.?)|رقم (?:الطلب|المرجع))\\s*[:#]?\\s*([A-Z0-9][A-Z0-9-]{3,})/i);\n  out.push({ json: { row_id: p.id, status: 'applied_confirmed', status_note: 'وصل رد من الجهة: ' + String(r.subject || '').slice(0, 150), confirmation_ref: m ? m[1] : '', confirmed_at: r.receivedDateTime || new Date().toISOString() } });\n}\nreturn out;"
+      },
+      "id": "c3ec0d0e-7441-4766-84e5-5a6d01b9edc6",
+      "name": "Match Confirmations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.status }}",
+            "status_note": "={{ $json.status_note }}",
+            "confirmation_ref": "={{ $json.confirmation_ref }}",
+            "confirmed_at": "={{ $json.confirmed_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_note",
+              "displayName": "status_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmation_ref",
+              "displayName": "confirmation_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmed_at",
+              "displayName": "confirmed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "45d09247-95f0-4b9b-9dcb-416ae85469a6",
+      "name": "Update Application Status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1168,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "found_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(30, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "a9629a70-7f8e-475f-86c8-9a0c610acd69",
+      "name": "Get Jobs Last 30 Days",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        944,
+        1648
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($('Load Settings (Report)').first().json.news_query_en + ' when:3d') + '&hl=en-US&gl=EG&ceid=EG:en' }}",
+        "options": {}
+      },
+      "id": "9c2d33ce-16d9-4d46-a05a-d9ff00a5155b",
+      "name": "Fetch News EN",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        1168,
+        1648
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($('Load Settings (Report)').first().json.news_query_ar + ' when:3d') + '&hl=ar&gl=EG&ceid=EG:ar' }}",
+        "options": {}
+      },
+      "id": "9831fee5-4f08-4da4-84ab-00ce6a858fbd",
+      "name": "Fetch News AR",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        1392,
+        1648
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $('Load Settings (Report)').first().json;\nconst safe = name => { try { return $(name).all().map(i => i.json).filter(j => j && !j.error); } catch (e) { return []; } };\nconst now = Date.now();\nconst H = 3600000;\nconst within = (d, h) => { const t = d ? new Date(d).getTime() : NaN; return isFinite(t) && (now - t) <= h * H; };\nconst one = s => String(s == null ? '' : s).replace(/[\\r\\n\\t]+/g, ' ').replace(/ {4,}/g, '   ').trim();\nconst cut = (s, n) => { const x = one(s); return x.length > n ? x.slice(0, n - 1) + '…' : x; };\nconst seenRows = new Set();\nconst rows = safe('Get Jobs Last 30 Days').filter(r => r.id && r.source !== 'test').filter(r => { const k = r.job_key || r.dedup_key || r.id; if (seenRows.has(k)) return false; seenRows.add(k); return true; });\nconst minScore = Number(S.report_min_score) || 60;\nconst newGood = rows.filter(r => r.is_fresh && within(r.found_at, 26) && Number(r.match_score) >= minScore).sort((a, b) => b.match_score - a.match_score);\nconst confirmed = rows.filter(r => r.status === 'applied_confirmed' && within(r.confirmed_at, 26));\nconst awaiting = rows.filter(r => r.status === 'email_sent_awaiting_confirmation');\nconst manual = rows.filter(r => r.status === 'needs_manual' && within(r.found_at, 26)).sort((a, b) => b.match_score - a.match_score);\nconst openManual = rows.filter(r => r.status === 'needs_manual').length;\nconst counts = {};\nrows.forEach(r => String(r.skills || '').split(',').map(x => x.trim()).filter(Boolean).forEach(k => { counts[k] = (counts[k] || 0) + 1; }));\nconst topSkills = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);\nconst skillsLine = rows.length < 10 ? 'بيانات غير كافية (' + rows.length + ' إعلان فقط في آخر 30 يوم)' : topSkills.map(e => e[0] + ' (' + e[1] + ')').join('، ') + ' — من ' + rows.length + ' إعلان';\nconst per = { year: 'سنويًا', month: 'شهريًا', hour: 'بالساعة' };\nconst groups = {};\nrows.filter(r => (Number(r.salary_min) || Number(r.salary_max)) && r.salary_currency && r.salary_period).forEach(r => {\n  const lo = Number(r.salary_min) || Number(r.salary_max);\n  const hi = Number(r.salary_max) || lo;\n  const k = r.salary_currency + '|' + r.salary_period;\n  if (!groups[k]) groups[k] = { cur: r.salary_currency, period: r.salary_period, vals: [], src: new Set() };\n  groups[k].vals.push((lo + hi) / 2);\n  groups[k].src.add(r.source);\n});\nconst MIN_N = 5;\nconst glist = Object.values(groups).sort((a, b) => b.vals.length - a.vals.length);\nconst salParts = glist.filter(g => g.vals.length >= MIN_N).map(g => 'متوسط ' + Math.round(g.vals.reduce((a, b) => a + b, 0) / g.vals.length).toLocaleString('en-US') + ' ' + g.cur + ' ' + (per[g.period] || g.period) + ' (من ' + g.vals.length + ' إعلان؛ المصادر: ' + Array.from(g.src).join('/') + ')');\nconst withSalary = glist.reduce((a, g) => a + g.vals.length, 0);\nconst salaryLine = salParts.length ? salParts.slice(0, 2).join(' | ') : 'بيانات غير كافية: ' + withSalary + ' إعلان فقط ذكر راتب في آخر 30 يوم (لازم ' + MIN_N + ' على الأقل بنفس العملة والفترة)';\nconst newsRaw = safe('Fetch News EN').concat(safe('Fetch News AR')).filter(n => n.title && n.link);\nconst seen = new Set();\nconst news = [];\nnewsRaw.forEach(n => {\n  const d = n.isoDate || n.pubDate;\n  if (!within(d, 72)) return;\n  const idx = String(n.title).lastIndexOf(' - ');\n  const title = idx > 0 ? n.title.slice(0, idx) : n.title;\n  const source = idx > 0 ? n.title.slice(idx + 3) : (n.creator || '');\n  const key = title.toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '').slice(0, 60);\n  if (seen.has(key)) return;\n  seen.add(key);\n  const t = new Date(d).getTime();\n  news.push({ title, source, link: n.link, t, date: DateTime.fromMillis(t).setZone('Africa/Cairo').toFormat('yyyy-MM-dd') });\n});\nnews.sort((a, b) => b.t - a.t);\nconst topNews = news.slice(0, 5);\nconst today = $now.setZone('Africa/Cairo').toFormat('yyyy-MM-dd');\nconst top = newGood[0];\nconst p2 = newGood.length ? newGood.length + ' وظيفة. الأعلى: ' + cut(top.title + ' – ' + (top.company || ''), 70) + ' (' + top.match_score + '%) ' + top.apply_url + (newGood.length > 1 ? ' | وكمان: ' + newGood.slice(1, 3).map(r => cut(r.title, 40)).join('، ') : '') : 'مفيش وظائف جديدة فوق ' + minScore + '% النهارده';\nconst p3 = (confirmed.length ? confirmed.length + ': ' + confirmed.map(r => cut(r.title, 40) + (r.confirmation_ref ? ' #' + r.confirmation_ref : '')).join('، ') : 'مفيش تأكيد جديد') + ' | مستني رد: ' + awaiting.length;\nconst p4 = manual.length ? manual.length + ' وظيفة. أولها: ' + cut(manual[0].title, 50) + ' ' + manual[0].apply_url + ' | المفتوح إجمالًا: ' + openManual : 'مفيش جديد (المفتوح إجمالًا: ' + openManual + ')';\nconst p7 = topNews.length ? topNews.slice(0, 3).map(n => cut(n.title, 60) + ' – ' + n.source + ' (' + n.date + ')').join(' | ') : 'مفيش أخبار جديدة خلال 72 ساعة';\nconst params = [cut(today, 20), cut(p2, 260), cut(p3, 120), cut(p4, 200), cut(skillsLine, 140), cut(salaryLine, 170), cut(p7, 230)];\nconst L = [];\nL.push('📋 تفاصيل تقرير الوظائف – ' + today);\nL.push('');\nL.push('🆕 وظائف جديدة مناسبة (' + newGood.length + '):');\nnewGood.slice(0, 10).forEach((r, i) => L.push((i + 1) + '. ' + r.title + ' – ' + (r.company || '') + ' | ' + (r.location || '') + ' | ' + r.match_score + '% | ' + (r.match_reason || '') + ' | ' + r.apply_url));\nL.push('');\nL.push('✅ تم التقديم وتأكد (' + confirmed.length + '):');\nconfirmed.forEach(r => L.push('- ' + r.title + ' – ' + (r.company || '') + (r.confirmation_ref ? ' | رقم: ' + r.confirmation_ref : '') + ' | ' + (r.status_note || '')));\nL.push('⏳ اتبعت ومستني رد: ' + awaiting.length);\nL.push('');\nL.push('✋ محتاجة تقديم يدوي (' + manual.length + ' جديدة، ' + openManual + ' مفتوحة إجمالًا):');\nmanual.slice(0, 10).forEach(r => L.push('- ' + r.title + ' – ' + (r.company || '') + ' (' + r.match_score + '%) | ' + (r.status_note || '') + (r.skill_gaps ? ' | ناقصك: ' + r.skill_gaps : '') + ' | ' + r.apply_url));\nconst T = [];\nT.push('📊 أكثر المهارات طلبًا (آخر 30 يوم): ' + skillsLine);\nT.push('💰 الرواتب: ' + salaryLine);\nT.push('');\nT.push('📰 أهم الأخبار (آخر 72 ساعة):');\ntopNews.forEach(n => T.push('- ' + n.title + ' – ' + n.source + ' (' + n.date + ') ' + n.link));\nif (!topNews.length) T.push('- مفيش أخبار جديدة');\n// WhatsApp text messages stop at 4096 characters. On a busy day the job lists\n// alone can pass that, so trim them at a line break and keep the skills,\n// salary and news sections whole instead of cutting the end of the message.\nconst tail = T.join('\\n').slice(0, 2000);\nlet head = L.join('\\n');\nconst room = 4000 - tail.length - 2;\nif (head.length > room) head = head.slice(0, Math.max(0, head.lastIndexOf('\\n', room - 2))) + '\\n…';\nconst full = head + '\\n\\n' + tail;\nreturn [{ json: { p1: params[0], p2: params[1], p3: params[2], p4: params[3], p5: params[4], p6: params[5], p7: params[6], full_text: full, new_count: newGood.length, confirmed_count: confirmed.length, manual_count: manual.length, jobs_30d: rows.length } }];"
+      },
+      "id": "a63f8623-f972-4ce8-8423-955a1018ab40",
+      "name": "Build Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $('Load Settings (Report)').first().json.wa_phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Load Settings (Report)').first().json.whatsapp_to }}",
+        "template": "={{ $('Load Settings (Report)').first().json.wa_template_name }}|ar",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $json.p1 }}"
+                  },
+                  {
+                    "text": "={{ $json.p2 }}"
+                  },
+                  {
+                    "text": "={{ $json.p3 }}"
+                  },
+                  {
+                    "text": "={{ $json.p4 }}"
+                  },
+                  {
+                    "text": "={{ $json.p5 }}"
+                  },
+                  {
+                    "text": "={{ $json.p6 }}"
+                  },
+                  {
+                    "text": "={{ $json.p7 }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "f75bc970-0144-4f19-910f-52697e98376e",
+      "name": "Send WhatsApp Report",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        1648
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "webhookId": "1cb33d93-1583-43c8-bd47-5e3d0ba48a41",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $('Load Settings (Report)').first().json.wa_phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Load Settings (Report)').first().json.whatsapp_to }}",
+        "textBody": "={{ $('Build Report').first().json.full_text }}",
+        "additionalFields": {}
+      },
+      "id": "f479e29d-1571-4530-a33b-3c1c438b5c92",
+      "name": "Send Full Details (if chat open)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        1440
+      ],
+      "webhookId": "20f2de75-4ec2-4d56-85ff-031361a65f47",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_runs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_type": "daily_report",
+            "workflow_name": "={{ $workflow.name }}",
+            "execution_id": "={{ $execution.id }}",
+            "status": "={{ $('Send Full Details (if chat open)').first().json.error ? 'ok_template_only' : 'ok' }}",
+            "new_count": "={{ $('Build Report').first().json.new_count }}",
+            "manual_count": "={{ $('Build Report').first().json.manual_count }}",
+            "report_text": "={{ $('Build Report').first().json.full_text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_type",
+              "displayName": "run_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "new_count",
+              "displayName": "new_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "manual_count",
+              "displayName": "manual_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "report_text",
+              "displayName": "report_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0ef4db88-09c5-4de5-abec-d79cf7cd3e38",
+      "name": "Log Report Run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2464,
+        1424
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_runs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_type": "daily_report",
+            "workflow_name": "={{ $workflow.name }}",
+            "execution_id": "={{ $execution.id }}",
+            "status": "whatsapp_failed",
+            "error_message": "={{ $('Capture WhatsApp Error').first().json.wa_error }}",
+            "report_text": "={{ $('Build Report').first().json.full_text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_type",
+              "displayName": "run_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "report_text",
+              "displayName": "report_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "af5a348c-aa0e-4f1d-9443-75262fb18a81",
+      "name": "Log WhatsApp Failure",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2432,
+        1632
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {},
+      "id": "15bebb02-84de-4b76-8201-b326ad087ff6",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        64,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_runs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_type": "error",
+            "workflow_name": "={{ $json.workflow.name }}",
+            "execution_id": "={{ $json.execution.id }}",
+            "status": "failed",
+            "error_message": "={{ ($json.execution.lastNodeExecuted || '') + ': ' + ($json.execution.error?.message || 'unknown error') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_type",
+              "displayName": "run_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "06bb0b1f-90e5-4a3a-a9d7-5012c1a6d1d9",
+      "name": "Log Failed Run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_settings"
+        },
+        "limit": 1,
+        "orderBy": true
+      },
+      "id": "65c01184-1bd2-4f74-b230-bbf5d673f895",
+      "name": "Load Settings (Error)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        2320
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{ $json.applicant_email }}",
+        "subject": "=n8n Job Hunter failed: {{ $('On Workflow Error').item.json.execution.lastNodeExecuted }}",
+        "bodyContent": "=Node: {{ $('On Workflow Error').item.json.execution.lastNodeExecuted }}\nError: {{ $('On Workflow Error').item.json.execution.error?.message }}\nExecution: {{ $('On Workflow Error').item.json.execution.url }}",
+        "additionalFields": {
+          "bodyContentType": "Text"
+        }
+      },
+      "id": "cac0fabd-5772-4009-a8be-05ad699c802f",
+      "name": "Email Error Alert",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        720,
+        2320
+      ],
+      "webhookId": "5b6a6908-cd8a-477e-9243-6916a22a7c77",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "found_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(2, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "71c023a8-b1a2-4ad8-a731-15ea96f69299",
+      "name": "Get Jobs To Score",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        720
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wa-err-1",
+              "name": "wa_error",
+              "type": "string",
+              "value": "={{ String($json.error?.message || $json.error || 'unknown') + ' | ' + String($json.error?.description || '') }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "6f53e974-8757-4a03-8db1-72e5324da7b2",
+      "name": "Capture WhatsApp Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1984,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst one = s => String(s == null ? '' : s).replace(/[\\r\\n\\t]+/g, ' ').replace(/ {2,}/g, ' ').trim();\nconst cut = (s, n) => { const x = one(s); return x.length > n ? x.slice(0, n - 1) + '…' : x; };\nconst short = s => one(s).startsWith('بيانات غير كافية') ? 'بيانات غير كافية لسه' : s;\nconst news = one(r.p7).split(' | ').slice(0, 2).map(x => cut(x, 45)).join(' | ');\nreturn [{ json: Object.assign({}, r, { p1: cut(r.p1, 12), p2: cut(r.p2, 220), p3: cut(r.p3, 60), p4: cut(r.p4, 180), p5: cut(short(r.p5), 100), p6: cut(short(r.p6), 100), p7: cut(news, 95) }) }];"
+      },
+      "id": "cf077c04-94b8-44ab-88bd-ac5f9d26c513",
+      "name": "Fit WhatsApp Limits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $json.wa_phone_number_id }}",
+        "recipientPhoneNumber": "={{ $json.whatsapp_to }}",
+        "textBody": "=⚠️ Job Hunter وقع في عقدة: {{ $('On Workflow Error').item.json.execution.lastNodeExecuted }}\nالخطأ: {{ $('On Workflow Error').item.json.execution.error?.message }}",
+        "additionalFields": {}
+      },
+      "id": "b6cb3eff-7746-48d3-880a-63351f2b98ae",
+      "name": "WhatsApp Error Alert",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        2304
+      ],
+      "webhookId": "db091972-9694-4b1c-b40c-f5cc1f75151d",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "39a047d1-02ff-4ff3-aa01-e00f6335f238",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "needs_manual",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "1ac0fb94-cfb4-4155-8e16-e9112f2ce5e5",
+              "leftValue": "={{ $('Load Settings').first().json.careermind_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e168a6d1-5298-441d-b01b-94260714b9fb",
+      "name": "Deep Check?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        3152,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($('Load Settings').first().json.careermind_url).replace(/\\/+$/, '') }}/api/match",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cvText: String($('Load Settings').first().json.cv_text).slice(0, 20000), jdText: [$json.title, $json.company, $json.description].filter(Boolean).join('\\n').slice(0, 20000) }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "afd3e4e2-0943-4289-9307-b9fde5d9eddd",
+      "name": "CareerMind Gap Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3376,
+        1040
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CareerMind API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pairs each CareerMind reply with the job it was asked about and keeps the\n// missing skills. A failed call (no score in the reply) is skipped, so the\n// job keeps its Gemini score and the report simply shows no gaps for it.\nconst jobs = $('Deep Check?').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n  const r = item.json || {};\n  const job = jobs[i] && jobs[i].json;\n  if (!job || !job.row_id || typeof r.job_match_score !== 'number') return;\n  const gaps = [].concat(r.missing_skills || [], r.partial_match_skills || []).map(String).filter(Boolean);\n  out.push({ json: { row_id: job.row_id, careermind_score: r.job_match_score, skill_gaps: gaps.slice(0, 8).join(', ').slice(0, 300) } });\n});\nreturn out;"
+      },
+      "id": "1ba2d669-83dd-443e-a2cc-bcf2f6a02955",
+      "name": "Format Skill Gaps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jh_jobs"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "skill_gaps": "={{ $json.skill_gaps }}",
+            "careermind_score": "={{ $json.careermind_score }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "skill_gaps",
+              "displayName": "skill_gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "careermind_score",
+              "displayName": "careermind_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ae93a77e-0e1d-4e96-b864-b3a389b0968a",
+      "name": "Save Skill Gaps",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3824,
+        1040
+      ]
+    }
+  ],
+  "connections": {
+    "Daily 8 AM Search": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Search": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Count Today Applications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Today Applications": {
+      "main": [
+        [
+          {
+            "node": "Fetch Remotive Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Remotive Jobs": {
+      "main": [
+        [
+          {
+            "node": "Fetch RemoteOK Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RemoteOK Jobs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Arbeitnow Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Arbeitnow Jobs": {
+      "main": [
+        [
+          {
+            "node": "Fetch WeWorkRemotely RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch WeWorkRemotely RSS": {
+      "main": [
+        [
+          {
+            "node": "Build Company Board URLs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Custom RSS List",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize & Filter Jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Jobs To Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Company Board URLs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Company Boards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Custom RSS List": {
+      "main": [
+        [
+          {
+            "node": "Read Custom RSS Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Filter Jobs": {
+      "main": [
+        [
+          {
+            "node": "Keep Only New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Only New Jobs": {
+      "main": [
+        [
+          {
+            "node": "Save New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Jobs For Scoring": {
+      "main": [
+        [
+          {
+            "node": "Score Job Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Scoring Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Score Job Match",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score JSON Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Score Job Match",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Job Match": {
+      "main": [
+        [
+          {
+            "node": "Plan Applications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Applications": {
+      "main": [
+        [
+          {
+            "node": "Loop Jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Deep Check?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Jobs": {
+      "main": [
+        [
+          {
+            "node": "Log Search Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto Apply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Letter Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write Cover Letter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto Apply?": {
+      "main": [
+        [
+          {
+            "node": "Write Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Score & Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Download CV PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download CV PDF": {
+      "main": [
+        [
+          {
+            "node": "Mark Email Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Mark Email Sent": {
+      "main": [
+        [
+          {
+            "node": "Loop Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Score & Status": {
+      "main": [
+        [
+          {
+            "node": "Loop Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 9 AM Report": {
+      "main": [
+        [
+          {
+            "node": "Load Settings (Report)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings (Report)": {
+      "main": [
+        [
+          {
+            "node": "Get Awaiting Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Awaiting Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Check Outlook Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Outlook Replies": {
+      "main": [
+        [
+          {
+            "node": "Match Confirmations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Jobs Last 30 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Confirmations": {
+      "main": [
+        [
+          {
+            "node": "Update Application Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Jobs Last 30 Days": {
+      "main": [
+        [
+          {
+            "node": "Fetch News EN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News EN": {
+      "main": [
+        [
+          {
+            "node": "Fetch News AR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News AR": {
+      "main": [
+        [
+          {
+            "node": "Build Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Report": {
+      "main": [
+        [
+          {
+            "node": "Send Full Details (if chat open)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Capture WhatsApp Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Full Details (if chat open)": {
+      "main": [
+        [
+          {
+            "node": "Log Report Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Log Failed Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Failed Run": {
+      "main": [
+        [
+          {
+            "node": "Load Settings (Error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings (Error)": {
+      "main": [
+        [
+          {
+            "node": "Email Error Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Jobs To Score": {
+      "main": [
+        [
+          {
+            "node": "Prepare Jobs For Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture WhatsApp Error": {
+      "main": [
+        [
+          {
+            "node": "Log WhatsApp Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report": {
+      "main": [
+        [
+          {
+            "node": "Fit WhatsApp Limits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fit WhatsApp Limits": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deep Check?": {
+      "main": [
+        [
+          {
+            "node": "CareerMind Gap Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CareerMind Gap Check": {
+      "main": [
+        [
+          {
+            "node": "Format Skill Gaps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Skill Gaps": {
+      "main": [
+        [
+          {
+            "node": "Save Skill Gaps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

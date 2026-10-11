@@ -2,11 +2,12 @@
 
 # CareerMind AI
 
-**A multi-agent readiness scan for your next role.**
+**An AI career platform: job readiness for candidates, job hunting on autopilot, and applicant screening for recruiters.**
 
 Upload your CV, paste the job you want, and six specialized AI agents tell you how
 well you match, what you're missing, how to close the gap, and whether you're ready
-for the interview.
+for the interview. Two n8n automations use the same matching engine: one finds
+jobs for you every morning, the other screens applicants for a company.
 
 ![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
@@ -24,6 +25,7 @@ for the interview.
 
 ## Contents
 
+- [The platform](#the-platform)
 - [Why CareerMind](#why-careermind)
 - [Screenshots](#screenshots)
 - [The 6 agents](#the-6-agents)
@@ -32,9 +34,38 @@ for the interview.
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [API reference](#api-reference)
+- [The match API](#the-match-api)
 - [Error handling](#error-handling)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
+
+## The platform
+
+One matching engine, three ways to use it:
+
+| Part | For | What it does | Where |
+| --- | --- | --- | --- |
+| **CareerMind app** | Candidates | CV vs. job analysis, skill gaps, roadmap and mock interview in the browser | [`career-mind-app/`](career-mind-app/backend) |
+| **Job Hunter** | Candidates | n8n workflow: finds entry-level jobs daily, scores them, and sends a WhatsApp report with the skills you're missing for each strong match | [`automations/job-hunter/`](automations/job-hunter) |
+| **Applicant Screening** | Recruiters | n8n workflow: scores each application against the job, saves it to Google Sheets and alerts the recruiter about strong applicants | [`automations/applicant-screening/`](automations/applicant-screening) |
+
+```mermaid
+flowchart LR
+    subgraph App["CareerMind app (Express)"]
+        UI[Web UI] --> FA["/api/full-analysis"]
+        M["/api/match"]
+    end
+    JH["Job Hunter (n8n)"] -- "strong matches: CV + job" --> M
+    AS["Applicant Screening (n8n)"] -- "each application: CV + job" --> M
+    M -- "score + matching / missing skills" --> JH
+    M -- "score + matching / missing skills" --> AS
+    JH --> WA[(WhatsApp report)]
+    AS --> GS[(Google Sheets + email)]
+```
+
+The automations call `POST /api/match`, which runs the CV Analyzer, Job Analyzer and
+Matching agents, so a job or an applicant gets the same score in every part of the
+platform.
 
 ## Why CareerMind
 
@@ -208,6 +239,13 @@ For development, `npm run dev` restarts the server when a file changes.
 npm test
 ```
 
+The two automations have their own tests (Node.js 21+, no install needed):
+
+```bash
+cd automations/job-hunter && node --test tests/*.test.mjs
+cd automations/applicant-screening && node --test tests/*.test.mjs
+```
+
 Runs the tests in `test/` with Node's built-in test runner (no extra
 dependencies). They cover JSON parsing of agent replies, score handling, final
 interview detection, interview-history validation and the rate limiter. The
@@ -226,12 +264,14 @@ same command on every pull request and push to `main`.
 | `AIMICROMIND_API_KEY` | – | Only if your chatflows use *API Key* authorization |
 | `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | – | Turns on the *Open roles* step |
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
+| `CAREERMIND_API_KEY` | – | Turns on `POST /api/match` for the n8n automations. Use a long random secret |
 | `ALLOWED_ORIGINS` | – | Other websites allowed to call the API from a browser, comma-separated (e.g. `https://my-site.com`). By default only the app itself can, so other sites can't spend your LLM credits through visitors' browsers |
 | `FLOW_TIMEOUT_MS` | – | Max wait per agent call in ms. Default `90000` |
 | `PORT` | – | Local port. Default `3000` (Render sets this for you) |
 | `RATE_LIMIT_ANALYSES_PER_HOUR` | – | Full analyses allowed per visitor IP per hour. Default `10`, `0` turns the limit off |
 | `RATE_LIMIT_INTERVIEW_MESSAGES_PER_HOUR` | – | Interview messages per IP per hour. Default `100` |
 | `RATE_LIMIT_JOB_SEARCHES_PER_HOUR` | – | Job searches per IP per hour. Default `60` |
+| `RATE_LIMIT_MATCHES_PER_HOUR` | – | `/api/match` calls per IP per hour. Default `120` |
 
 > **Rate limits:** every analysis and interview turn spends LLM credits, so the
 > API answers `429` once a visitor passes these limits. The counts are kept in
@@ -297,7 +337,34 @@ All endpoints return JSON. Errors always have the shape `{ "error": "<message>" 
 | `POST` | `/api/full-analysis` | multipart: `cvFile` (PDF ≤ 4 MB), `jdText` | `{ cv, job, matching, skillGap, roadmap }` |
 | `POST` | `/api/interview/start` | `{ cv, job }` | `{ sessionId, message, isFinal: false }` |
 | `POST` | `/api/interview/message` | `{ sessionId, message, cv, job, history[] }` | `{ message, isFinal, evaluation }` |
+| `POST` | `/api/match` | `{ cvText, jdText }` + header `x-api-key` | `{ job_title, candidate_name, job_match_score, matching_skills, partial_match_skills, missing_skills }` |
 | `GET` | `/api/jobs/search?q=<role>` | – | `{ jobs: [{ title, company, location, url }] }` |
+
+## The match API
+
+`POST /api/match` is a server-to-server endpoint for the n8n automations. It is off
+until you set `CAREERMIND_API_KEY`, and every request must send that key in the
+`x-api-key` header, so the public demo can't be used to spend your LLM credits.
+
+```bash
+curl -X POST https://<your-app>/api/match \
+  -H "content-type: application/json" -H "x-api-key: $CAREERMIND_API_KEY" \
+  -d '{"cvText": "…", "jdText": "…"}'
+```
+
+```json
+{
+  "job_title": "AI Automation Intern",
+  "candidate_name": "…",
+  "job_match_score": 78,
+  "matching_skills": ["n8n", "Python"],
+  "partial_match_skills": ["REST APIs"],
+  "missing_skills": ["Docker"]
+}
+```
+
+In n8n, store the key as a **Header Auth** credential named `CareerMind API Key`
+(header `x-api-key`). Both workflows use that name.
 
 ## Error handling
 

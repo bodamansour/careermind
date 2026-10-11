@@ -6,6 +6,7 @@ const path = require('path');
 const analyzeRoutes = require('./routes/analyze');
 const interviewRoutes = require('./routes/interview');
 const jobsRoutes = require('./routes/jobs');
+const matchRoutes = require('./routes/match');
 const { AGENTS, agentMode, missingAgents } = require('./services/agents');
 const { rateLimit, envLimit } = require('./services/rateLimit');
 
@@ -47,6 +48,7 @@ app.get('/api/health', (req, res) => {
     status: missingAgents().length ? 'degraded' : 'ok',
     agents,
     jobSearch: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
+    matchApi: !!process.env.CAREERMIND_API_KEY,
   });
 });
 
@@ -68,6 +70,13 @@ app.use('/api/jobs', rateLimit({
   message: 'Too many job searches from this connection. Please try again later.',
 }));
 
+app.use('/api/match', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_MATCHES_PER_HOUR', 120),
+  message: 'Too many match requests. Please try again later.',
+}));
+
+app.use('/api/match', matchRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/jobs', jobsRoutes);

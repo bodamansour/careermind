@@ -21,3 +21,5 @@ services:
         sync: false
       - key: ADZUNA_COUNTRY
         value: gb
+      - key: CAREERMIND_API_KEY
+        generateValue: true
