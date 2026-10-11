@@ -54,6 +54,8 @@ async function apiFetch(url, options) {
 
 // Scores may come back from the models as strings; keep them numeric 0-100.
 function toScore(value) {
+  // Number(null) is 0: a missing sub-score must show as "—", not 0.
+  if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
 }
@@ -95,13 +97,24 @@ function show(name) {
     el.classList.toggle('active', i === idx);
     el.classList.toggle('done', completedStages.has(stageName) && i !== idx);
     el.classList.toggle('clickable', completedStages.has(stageName));
+    // Only completed stages are reachable, so only they join the tab order.
+    el.tabIndex = completedStages.has(stageName) ? 0 : -1;
+    if (i === idx) el.setAttribute('aria-current', 'step');
+    else el.removeAttribute('aria-current');
   });
 }
 
 stageEls.forEach((el, i) => {
-  el.addEventListener('click', () => {
+  const open = () => {
     const stageName = stageOrder[i];
     if (completedStages.has(stageName)) show(stageName);
+  };
+  el.addEventListener('click', open);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
   });
 });
 
