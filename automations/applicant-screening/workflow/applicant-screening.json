@@ -1,0 +1,947 @@
+{
+  "name": "Applicant Screening (CareerMind)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Applicant Screening (CareerMind)\n1. Fill in the **Config** node (company, recruiter email, CareerMind URL, thresholds).\n2. Connect credentials: Google Sheets, Gmail, and a **Header Auth** credential named `CareerMind API Key` (header `x-api-key`, value = the server's CAREERMIND_API_KEY).\n3. Put your sheet ID in **Duplicate Check** and **Save to Sheet** (tab `Applicants`).\n4. Publish, then send a test application to the webhook.",
+        "height": 240,
+        "width": 560,
+        "color": 7
+      },
+      "id": "0637f0a5-9a10-4079-828c-31298bd68cc1",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "applicant-screening",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4b35d130-04c0-41ff-908e-9000cbf39c87",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "861832d7-9051-4bf0-8090-910b43070c68"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c637c61d-ed73-460d-91e1-f56a2ebd3498",
+              "name": "company_name",
+              "value": "Your Company",
+              "type": "string"
+            },
+            {
+              "id": "a0bcf03a-50e0-4e2d-8f78-4d726e905c01",
+              "name": "recruiter_email",
+              "value": "recruiter@example.com",
+              "type": "string"
+            },
+            {
+              "id": "5fcccdbe-0b71-437e-aeb4-30a6210b6880",
+              "name": "careermind_url",
+              "value": "https://your-careermind-app.vercel.app",
+              "type": "string"
+            },
+            {
+              "id": "7da72194-d058-4a61-8570-853ad76207de",
+              "name": "strong_threshold",
+              "value": 75,
+              "type": "number"
+            },
+            {
+              "id": "9fb63935-24e4-4a4d-828c-909d55c2ffcf",
+              "name": "possible_threshold",
+              "value": 50,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {},
+        "includeOtherFields": true
+      },
+      "id": "ea1c4098-391f-4769-b30d-368f6a7f4607",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "87e33347-0ccc-4df5-85d4-b904d332798d",
+              "name": "name",
+              "value": "={{ ($json.body.name || $json.name || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "b9595851-3163-495a-bf96-76059e370e74",
+              "name": "email",
+              "value": "={{ ($json.body.email || $json.email || '').toString().trim().toLowerCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "cd1ed69f-43ca-46bf-9450-9a4ead782c67",
+              "name": "phone",
+              "value": "={{ ($json.body.phone || $json.phone || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "7cd77691-5e94-4c52-af06-d512b88ff771",
+              "name": "job_id",
+              "value": "={{ ($json.body.job_id || $json.job_id || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "59f29514-81e8-4a7f-bf9a-9cf6ed60f9f3",
+              "name": "job_title",
+              "value": "={{ ($json.body.job_title || $json.job_title || '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "8ffebe31-c525-4c30-9849-287498f4acdc",
+              "name": "job_description",
+              "value": "={{ ($json.body.job_description || $json.job_description || '').toString().trim().slice(0, 20000) }}",
+              "type": "string"
+            },
+            {
+              "id": "cdb137fd-0a45-48a1-805d-4ad310ad8fd4",
+              "name": "cv_text",
+              "value": "={{ ($json.body.cv_text || $json.cv_text || '').toString().trim().slice(0, 20000) }}",
+              "type": "string"
+            },
+            {
+              "id": "41e72022-c826-4031-8b66-f320fa57235f",
+              "name": "source",
+              "value": "={{ ($json.body.source || $json.source || '').toString().trim() || 'webhook' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b692b02d-27a1-4c11-a1ed-9308d29e37a6",
+      "name": "Normalize Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "da977cc3-1c22-4a02-83d5-c7f1f66c4394",
+              "leftValue": "={{ $json.name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "221c4fb9-db31-43af-bebf-f1f74cda9728",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            },
+            {
+              "id": "acbb5904-a7dc-408a-8cde-bb6a72bc9894",
+              "leftValue": "={{ $json.job_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "70f1b804-4a0e-4a7e-9b58-f3bc8e0fbf7e",
+              "leftValue": "={{ $json.job_description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "a64b01aa-32c4-41c3-83ee-d88bcb62604c",
+              "leftValue": "={{ $json.cv_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b7646f37-0243-4f30-af3b-ce14fe15e4b0",
+      "name": "Validate Application",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c74a6e4-7e9b-4a9b-b5b9-f584df0775cb",
+              "name": "rejection_reason",
+              "value": "Missing name, a valid email, job_id, job_description or cv_text",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ce04ce88-a9b6-4f1f-aed7-b8a81a91d289",
+      "name": "Reject Invalid",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"rejected\",\n  \"reason\": \"{{ $json.rejection_reason }}\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "b23b29a5-4e22-4db6-a6d3-6dae3432fc98",
+      "name": "Respond: Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applicants",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "email",
+              "lookupValue": "={{ $json.email }}"
+            },
+            {
+              "lookupColumn": "job_id",
+              "lookupValue": "={{ $json.job_id }}"
+            }
+          ]
+        },
+        "combineFilters": "AND",
+        "options": {}
+      },
+      "id": "c4af778f-6f48-495d-81d8-cd6f4cd2a04a",
+      "name": "Duplicate Check",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "65e42a3c-1747-4efc-87dc-2f9cbfcfda33",
+              "leftValue": "={{ $json.applicant_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9c5a6c8b-d975-4f73-b4f8-31513f56e5d9",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fccb76d5-6256-44d6-b3d4-1c231d28c48d",
+              "name": "existing_applicant_id",
+              "value": "={{ $json.applicant_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "392c12f8-c4d3-4cb4-af2d-9974849be3de",
+      "name": "Skip Duplicate",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"duplicate\",\n  \"existing_applicant_id\": \"{{ $json.existing_applicant_id }}\"\n}",
+        "options": {}
+      },
+      "id": "6ad80c8a-bba3-4da4-bcae-052058d5b93c",
+      "name": "Respond: Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6ee044a6-b52e-4a4e-b034-1b8854b067b9",
+              "name": "applicant_id",
+              "value": "={{ 'APP-' + $now.toMillis() + '-' + $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "991fb6b8-f3da-4a05-a344-e9d8e1676f9c",
+              "name": "name",
+              "value": "={{ $('Normalize Data').first().json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "2dff3c4f-93a6-4c04-b1c7-dcb6654d26a5",
+              "name": "email",
+              "value": "={{ $('Normalize Data').first().json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "7746214d-772c-4e4d-8433-202f8f30cabf",
+              "name": "phone",
+              "value": "={{ $('Normalize Data').first().json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "43c4b798-1bc7-4040-81e7-054cfe03e28a",
+              "name": "job_id",
+              "value": "={{ $('Normalize Data').first().json.job_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ad9c251c-dd40-49f0-bbdd-3e0f072685e3",
+              "name": "job_title",
+              "value": "={{ $('Normalize Data').first().json.job_title }}",
+              "type": "string"
+            },
+            {
+              "id": "50190909-af77-4c8c-8c90-3a70e447a41d",
+              "name": "job_description",
+              "value": "={{ $('Normalize Data').first().json.job_description }}",
+              "type": "string"
+            },
+            {
+              "id": "6dd91cec-ee73-47ac-bc85-82ba72fcdddb",
+              "name": "cv_text",
+              "value": "={{ $('Normalize Data').first().json.cv_text }}",
+              "type": "string"
+            },
+            {
+              "id": "50841c85-d358-43ae-9607-c61bd3a506dd",
+              "name": "source",
+              "value": "={{ $('Normalize Data').first().json.source }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cf8abbfc-2976-42ca-a64a-35d452db51b4",
+      "name": "Generate Applicant ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($('Config').first().json.careermind_url).replace(/\\/+$/, '') }}/api/match",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cvText: $json.cv_text, jdText: $json.job_description }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "15e6c97b-1b6f-4c25-a7b5-bb6b8f56c7ca",
+      "name": "CareerMind Match",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        380
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CareerMind API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Reads the CareerMind reply. If the call failed or the reply has no numeric\n// score, the applicant is saved as REVIEW so a person reads the CV instead of\n// the workflow guessing a score.\nconst app = $('Generate Applicant ID').first().json;\nconst cfg = $('Config').first().json;\nconst r = $input.item.json || {};\nconst ok = typeof r.job_match_score === 'number' && Number.isFinite(r.job_match_score);\nconst score = ok ? Math.max(0, Math.min(100, Math.round(r.job_match_score))) : null;\nconst list = v => (Array.isArray(v) ? v.map(String).filter(Boolean).join(', ') : '');\nlet category = 'REVIEW';\nif (ok) category = score >= cfg.strong_threshold ? 'STRONG' : score >= cfg.possible_threshold ? 'POSSIBLE' : 'WEAK';\nreturn {\n  json: {\n    applicant_id: app.applicant_id,\n    created_at: $now.toISO(),\n    name: app.name,\n    email: app.email,\n    phone: app.phone,\n    job_id: app.job_id,\n    job_title: app.job_title || r.job_title || '',\n    source: app.source,\n    match_score: score,\n    category,\n    matching_skills: ok ? list(r.matching_skills) : '',\n    missing_skills: ok ? list([].concat(r.missing_skills || [], r.partial_match_skills || [])) : '',\n    scoring_mode: ok ? 'CareerMind' : 'Not scored (CareerMind unavailable)',\n    status: 'new',\n  },\n};\n"
+      },
+      "id": "d7e9e918-bb35-428e-9795-4719989309f6",
+      "name": "Final Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d7286d3a-cac7-4054-bc7d-910f6c3306d4",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "STRONG",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "STRONG"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "OTHER"
+        }
+      },
+      "id": "59538ce7-f84f-4048-8656-d684dcf98e08",
+      "name": "Classify",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1980,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.recruiter_email }}",
+        "subject": "=Strong applicant for {{ $json.job_title || $json.job_id }}: {{ $json.name }} ({{ $json.match_score }}/100)",
+        "emailType": "text",
+        "message": "=A strong applicant just applied.\n\nName: {{ $json.name }}\nEmail: {{ $json.email }}\nPhone: {{ $json.phone }}\nJob: {{ $json.job_title }} ({{ $json.job_id }})\n\nMatch score: {{ $json.match_score }}/100\nMatching skills: {{ $json.matching_skills }}\nGaps: {{ $json.missing_skills }}\n\nApplicant ID: {{ $json.applicant_id }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "31145410-c7e9-4081-a0bd-5ddb7cb7c654",
+      "name": "Alert Recruiter (STRONG)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2200,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applicants",
+          "mode": "name"
+        },
+        "operation": "append",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "applicant_id": "={{ $json.applicant_id }}",
+            "created_at": "={{ $json.created_at }}",
+            "name": "={{ String($json.name ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "email": "={{ String($json.email ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "phone": "={{ String($json.phone ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "job_id": "={{ String($json.job_id ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "job_title": "={{ String($json.job_title ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "match_score": "={{ $json.match_score }}",
+            "category": "={{ $json.category }}",
+            "matching_skills": "={{ String($json.matching_skills ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "missing_skills": "={{ String($json.missing_skills ?? '').replace(/^[=+\\-@]/, \"'$&\") }}",
+            "scoring_mode": "={{ $json.scoring_mode }}",
+            "status": "={{ $json.status }}",
+            "source": "={{ String($json.source ?? '').replace(/^[=+\\-@]/, \"'$&\") }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "applicant_id",
+              "displayName": "applicant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "job_title",
+              "displayName": "job_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "matching_skills",
+              "displayName": "matching_skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "missing_skills",
+              "displayName": "missing_skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scoring_mode",
+              "displayName": "scoring_mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3ed25fe2-a158-48af-aca4-e9e7b9235a4e",
+      "name": "Save to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Final Score').first().json.email }}",
+        "subject": "=We received your application, {{ $('Final Score').first().json.name }}",
+        "emailType": "text",
+        "message": "=Hello {{ $('Final Score').first().json.name }},\n\nThank you for applying to {{ $('Final Score').first().json.job_title || 'the role' }} at {{ $('Config').first().json.company_name }}. We received your application and our team will review it.\n\nBest regards,\n{{ $('Config').first().json.company_name }} Hiring Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "7860a879-8d23-4854-88c9-e544ac33bad5",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2420,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"received\",\n  \"applicant_id\": \"{{ $('Final Score').first().json.applicant_id }}\"\n}",
+        "options": {}
+      },
+      "id": "7a2ea66d-c527-4cfa-9900-3466d8e73e19",
+      "name": "Respond: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Application": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Invalid": {
+      "main": [
+        [
+          {
+            "node": "Respond: Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Check": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Skip Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Applicant ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Respond: Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Applicant ID": {
+      "main": [
+        [
+          {
+            "node": "CareerMind Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CareerMind Match": {
+      "main": [
+        [
+          {
+            "node": "Final Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Score": {
+      "main": [
+        [
+          {
+            "node": "Classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify": {
+      "main": [
+        [
+          {
+            "node": "Alert Recruiter (STRONG)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
