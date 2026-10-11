@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { AppError, runJSONAgent } = require('../services/agents');
+const { AppError, runJSONAgent, toScore } = require('../services/agents');
 
 const router = express.Router();
 // 4 MB cap keeps uploads under Vercel's 4.5 MB function request body limit
@@ -56,6 +56,8 @@ router.post('/full-analysis', upload.single('cvFile'), async (req, res, next) =>
       'matching',
       `CV_DATA:\n${JSON.stringify(cv)}\n\nJOB_DATA:\n${JSON.stringify(job)}`
     );
+    // Models sometimes send the score as "85" or "85%"; the dashboard needs a number.
+    matching.job_match_score = toScore(matching.job_match_score);
 
     // 5. Skill Gap Agent
     const skillGap = await runJSONAgent(
