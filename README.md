@@ -13,6 +13,9 @@ for the interview.
 ![OpenRouter](https://img.shields.io/badge/LLM-OpenRouter-8b7cff)
 ![Deploy](https://img.shields.io/badge/Deploy-Vercel%20%7C%20Render-00d9a3)
 
+**Live demo:** [careermind-ai-rouge.vercel.app](https://careermind-ai-rouge.vercel.app)
+(job search is not enabled on the demo; the other steps work)
+
 <img src="docs/screenshots/02-readout.png" alt="CareerMind readiness readout" width="820" />
 
 </div>
@@ -205,9 +208,12 @@ For development, `npm run dev` restarts the server when a file changes.
 npm test
 ```
 
-Runs the unit tests in `test/` with Node's built-in test runner (no extra
+Runs the tests in `test/` with Node's built-in test runner (no extra
 dependencies). They cover JSON parsing of agent replies, score handling, final
-interview detection and interview-history validation. GitHub Actions runs the
+interview detection, interview-history validation and the rate limiter. The
+route tests send a small PDF (`test/fixtures/cv.pdf`) through
+`/api/full-analysis` with the LLM calls mocked, so no API key or network is
+needed. GitHub Actions runs the
 same command on every pull request and push to `main`.
 
 ## Configuration
