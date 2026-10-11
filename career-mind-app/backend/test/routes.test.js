@@ -90,3 +90,50 @@ test('interview message without the cv and job data is rejected before calling t
     assert.equal(post.mock.callCount(), 0);
   });
 });
+
+test('API calls from another website are refused before any model call', async (t) => {
+  const post = t.mock.method(axios, 'post', fakeReplies({ job_match_score: 80 }));
+
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/full-analysis`, {
+      method: 'POST',
+      headers: { Origin: 'https://other-site.example' },
+      body: analysisForm(),
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('access-control-allow-origin'), null);
+    assert.equal(post.mock.callCount(), 0);
+  });
+});
+
+test('API calls from the app itself and from requests without an Origin still work', async (t) => {
+  t.mock.method(axios, 'post', fakeReplies({ job_match_score: 80 }));
+
+  await withServer(async (base) => {
+    const sameSite = await fetch(`${base}/api/full-analysis`, {
+      method: 'POST',
+      headers: { Origin: base },
+      body: analysisForm(),
+    });
+    assert.equal(sameSite.status, 200);
+
+    const health = await fetch(`${base}/api/health`);
+    assert.equal(health.status, 200);
+  });
+});
+
+test('origins listed in ALLOWED_ORIGINS may call the API and get CORS headers', async (t) => {
+  t.mock.method(axios, 'post', fakeReplies({ job_match_score: 80 }));
+  process.env.ALLOWED_ORIGINS = 'https://my-portfolio.example, https://other.example';
+  t.after(() => delete process.env.ALLOWED_ORIGINS);
+
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/full-analysis`, {
+      method: 'POST',
+      headers: { Origin: 'https://my-portfolio.example' },
+      body: analysisForm(),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('access-control-allow-origin'), 'https://my-portfolio.example');
+  });
+});

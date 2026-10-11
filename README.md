@@ -226,6 +226,7 @@ same command on every pull request and push to `main`.
 | `AIMICROMIND_API_KEY` | – | Only if your chatflows use *API Key* authorization |
 | `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | – | Turns on the *Open roles* step |
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
+| `ALLOWED_ORIGINS` | – | Other websites allowed to call the API from a browser, comma-separated (e.g. `https://my-site.com`). By default only the app itself can, so other sites can't spend your LLM credits through visitors' browsers |
 | `FLOW_TIMEOUT_MS` | – | Max wait per agent call in ms. Default `90000` |
 | `PORT` | – | Local port. Default `3000` (Render sets this for you) |
 | `RATE_LIMIT_ANALYSES_PER_HOUR` | – | Full analyses allowed per visitor IP per hour. Default `10`, `0` turns the limit off |
@@ -314,6 +315,7 @@ Every failure returns a clear, specific message, and the UI shows it as a toast.
 | Chatflow override not found | 502 | `Roadmap Agent was not found (HTTP 404). Check ROADMAP_URL.` |
 | Agent returned non-JSON | 502 | `Skill Gap Agent returned an unexpected format…` |
 | Agent too slow | 504 | `Interview Agent took too long to respond…` |
+| API called from another website (not in `ALLOWED_ORIGINS`) | 403 | `This API only accepts requests from the CareerMind app.` |
 | Job search not configured | 503 | `Job search is not configured yet…` |
 
 The server logs the details (HTTP status, start of the raw reply) for debugging. It

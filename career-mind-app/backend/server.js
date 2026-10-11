@@ -13,7 +13,28 @@ const app = express();
 // Vercel and Render sit one proxy in front of the app; trusting that hop makes
 // req.ip the visitor's address (used by the rate limits below).
 app.set('trust proxy', 1);
-app.use(cors());
+
+// The frontend is served by this same app, so the API only needs same-site
+// calls. Other websites could otherwise make visitors' browsers spend this
+// app's LLM credits. Extra sites can be allowed with ALLOWED_ORIGINS
+// (comma-separated, e.g. https://my-site.com).
+function allowedOrigins() {
+  return (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
+}
+
+app.use('/api', (req, res, next) => {
+  const origin = req.get('origin');
+  if (!origin) return next(); // same-origin GETs, curl, health checks
+  let hostname = null;
+  try {
+    hostname = new URL(origin).hostname;
+  } catch (_) {
+    /* "null" or a malformed Origin */
+  }
+  if (hostname === req.hostname || allowedOrigins().includes(origin)) return next();
+  res.status(403).json({ error: 'This API only accepts requests from the CareerMind app.' });
+});
+app.use(cors({ origin: (origin, callback) => callback(null, allowedOrigins().includes(origin)) }));
 app.use(express.json({ limit: '2mb' }));
 
 // Health check for Render / uptime monitors; also reports unconfigured agents.
