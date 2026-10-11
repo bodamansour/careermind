@@ -1,6 +1,6 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
-const { callFlow, parseModelJSON } = require('../services/aimicromind');
+const { callFlow, parseModelJSON, normalizeEvaluation } = require('../services/aimicromind');
 
 const router = express.Router();
 
@@ -36,12 +36,11 @@ router.post('/message', async (req, res) => {
     const reply = await callFlow(process.env.INTERVIEW_URL, message, sessionId);
 
     // The agent's final message is a JSON evaluation. Detect it by trying to parse it.
+    // Scores may come back as strings ("85"), so normalize instead of
+    // requiring a number type.
     let evaluation = null;
     try {
-      const parsed = parseModelJSON(reply);
-      if (parsed && typeof parsed.overall_score === 'number') {
-        evaluation = parsed;
-      }
+      evaluation = normalizeEvaluation(parseModelJSON(reply));
     } catch (_) {
       /* not the final JSON yet - just a normal question/feedback message */
     }

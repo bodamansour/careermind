@@ -74,4 +74,42 @@ function parseModelJSON(raw) {
   throw new Error('Could not parse JSON from agent response: ' + raw.slice(0, 200));
 }
 
-module.exports = { callFlow, parseModelJSON };
+/**
+ * Turns a model-produced score into a number between 0 and 100.
+ * Models sometimes return scores as strings ("85") or with a "%" sign,
+ * which would break the readiness math in the frontend.
+ * @returns {number|null} the score, or null when it isn't a usable number
+ */
+function toScore(value) {
+  if (typeof value === 'string') value = value.trim().replace(/%$/, '');
+  if (value === '' || value == null || typeof value === 'boolean') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+const EVALUATION_SCORES = [
+  'technical_score',
+  'communication_score',
+  'completeness_score',
+  'overall_score',
+];
+
+/**
+ * Detects the Interview Agent's final JSON evaluation and normalizes its scores.
+ * @returns {object|null} the evaluation with numeric scores, or null if `parsed`
+ *   isn't a final evaluation (no usable overall_score)
+ */
+function normalizeEvaluation(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (toScore(parsed.overall_score) == null) return null;
+
+  const evaluation = { ...parsed };
+  for (const key of EVALUATION_SCORES) evaluation[key] = toScore(parsed[key]);
+  for (const key of ['strengths', 'areas_to_improve']) {
+    evaluation[key] = Array.isArray(parsed[key]) ? parsed[key].map(String) : [];
+  }
+  return evaluation;
+}
+
+module.exports = { callFlow, parseModelJSON, toScore, normalizeEvaluation };

@@ -24,6 +24,12 @@ app.use((err, req, res, next) => {
   if (err && err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'CV file is too large (max 4 MB).' });
   }
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Request body is not valid JSON.' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request is too large.' });
+  }
   console.error('unhandled error:', err && err.message);
   res.status(500).json({ error: 'Unexpected server error.' });
 });
