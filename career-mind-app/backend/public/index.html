@@ -10,8 +10,8 @@
 </head>
 <body>
 
-  <div class="scanline"></div>
-  <div id="toastContainer" class="toast-container"></div>
+  <div class="scanline" aria-hidden="true"></div>
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
 
   <header>
     <div class="wordmark">CAREERMIND</div>
@@ -19,12 +19,12 @@
   </header>
 
   <!-- STAGE RAIL -->
-  <nav class="stage-rail" id="stageRail">
-    <div class="stage active" data-stage="0"><span class="stage-num">01</span><span class="stage-name">Intake</span></div>
-    <div class="stage" data-stage="1"><span class="stage-num">02</span><span class="stage-name">Readout</span></div>
-    <div class="stage" data-stage="2"><span class="stage-num">03</span><span class="stage-name">Plan</span></div>
-    <div class="stage" data-stage="3"><span class="stage-num">04</span><span class="stage-name">Interview</span></div>
-    <div class="stage" data-stage="4"><span class="stage-num">05</span><span class="stage-name">Jobs</span></div>
+  <nav class="stage-rail" id="stageRail" aria-label="Progress">
+    <div class="stage active" data-stage="0" role="button"><span class="stage-num">01</span><span class="stage-name">Intake</span></div>
+    <div class="stage" data-stage="1" role="button"><span class="stage-num">02</span><span class="stage-name">Readout</span></div>
+    <div class="stage" data-stage="2" role="button"><span class="stage-num">03</span><span class="stage-name">Plan</span></div>
+    <div class="stage" data-stage="3" role="button"><span class="stage-num">04</span><span class="stage-name">Interview</span></div>
+    <div class="stage" data-stage="4" role="button"><span class="stage-num">05</span><span class="stage-name">Jobs</span></div>
   </nav>
 
   <main id="app">
@@ -32,25 +32,25 @@
     <!-- STEP 0: Upload -->
     <section id="upload-section" class="panel">
       <h2><span class="idx">01</span> Feed the scanner</h2>
-      <p class="hint">Upload your CV and paste the job you're targeting. Two agents will read them in parallel.</p>
+      <p class="hint">Upload your CV and paste the job you're targeting. Specialized agents read both, then compare them step by step.</p>
 
-      <label>CV — PDF</label>
+      <label for="cvFile">CV — PDF</label>
       <div class="file-drop" id="fileDrop">
         <input type="file" id="cvFile" accept="application/pdf" />
         <span id="fileLabel" class="file-drop-text">Drop a PDF here, or click to browse</span>
       </div>
 
-      <label>Job description</label>
+      <label for="jdText">Job description</label>
       <textarea id="jdText" rows="8" placeholder="Paste the full job description here..."></textarea>
 
       <button id="analyzeBtn" class="btn-primary">Run analysis</button>
-      <p id="uploadError" class="error"></p>
+      <p id="uploadError" class="error" role="alert"></p>
     </section>
 
     <!-- LOADING -->
     <section id="loading-section" class="panel hidden">
       <div class="scan-bar"><div class="scan-fill"></div></div>
-      <p id="loadingText" class="mono">Reading CV...</p>
+      <p id="loadingText" class="mono" role="status" aria-live="polite">Reading CV...</p>
     </section>
 
     <!-- STEP 1: Readout -->
@@ -59,7 +59,7 @@
 
       <div class="readout-grid">
         <div class="gauge">
-          <svg viewBox="0 0 120 120" class="gauge-svg">
+          <svg viewBox="0 0 120 120" class="gauge-svg" aria-hidden="true">
             <circle cx="60" cy="60" r="52" class="gauge-track" />
             <circle cx="60" cy="60" r="52" class="gauge-fill" id="gaugeFill" />
           </svg>
@@ -110,8 +110,8 @@
     <section id="interview-section" class="panel hidden">
       <button class="back-btn" data-back="dashboard">← Readout</button>
       <h2><span class="idx">04</span> Mock interview</h2>
-      <div id="chatWindow" class="chat-window">
-        <div id="typingIndicator" class="msg agent typing hidden">
+      <div id="chatWindow" class="chat-window" role="log" aria-live="polite" aria-label="Interview conversation">
+        <div id="typingIndicator" class="msg agent typing hidden" aria-label="Interviewer is typing">
           <span></span><span></span><span></span>
         </div>
       </div>
@@ -122,7 +122,7 @@
       </div>
 
       <div id="chatInputRow" class="chat-input-row">
-        <input type="text" id="chatInput" placeholder="Type your answer..." />
+        <input type="text" id="chatInput" placeholder="Type your answer..." aria-label="Your answer" />
         <button id="sendAnswerBtn" class="btn-primary">Send</button>
       </div>
     </section>
@@ -134,7 +134,7 @@
       <p class="hint">Pulled from Adzuna's public job index, matched to your top skills. LinkedIn does not offer a public jobs API, so results here come from a source that legitimately provides one — including some LinkedIn-sourced postings.</p>
 
       <div class="job-search-row">
-        <input type="text" id="jobQuery" placeholder="e.g. AI Automation Engineer" />
+        <input type="text" id="jobQuery" placeholder="e.g. AI Automation Engineer" aria-label="Role to search for" />
         <button id="searchJobsBtn" class="btn-primary">Search</button>
       </div>
 

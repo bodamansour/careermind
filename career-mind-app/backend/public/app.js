@@ -44,13 +44,24 @@ function show(name) {
     el.classList.toggle('active', i === idx);
     el.classList.toggle('done', completedStages.has(stageName) && i !== idx);
     el.classList.toggle('clickable', completedStages.has(stageName));
+    // Only completed stages are reachable, so only they join the tab order.
+    el.tabIndex = completedStages.has(stageName) ? 0 : -1;
+    if (i === idx) el.setAttribute('aria-current', 'step');
+    else el.removeAttribute('aria-current');
   });
 }
 
 stageEls.forEach((el, i) => {
-  el.addEventListener('click', () => {
+  const open = () => {
     const stageName = stageOrder[i];
     if (completedStages.has(stageName)) show(stageName);
+  };
+  el.addEventListener('click', open);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
   });
 });
 
@@ -118,6 +129,8 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   formData.append('cvFile', cvFileInput.files[0]);
   formData.append('jdText', jdText);
 
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  analyzeBtn.disabled = true;
   show('loading');
   let step = 0;
   const loadingText = document.getElementById('loadingText');
@@ -146,6 +159,8 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
     clearInterval(loadingInterval);
     show('upload');
     toast(err.message, 'error');
+  } finally {
+    analyzeBtn.disabled = false;
   }
 });
 
@@ -189,7 +204,7 @@ document.getElementById('viewPlanBtn').addEventListener('click', () => {
   const container = document.getElementById('planWeeks');
   container.innerHTML = '';
 
-  (state.roadmap.weeks || []).forEach((week) => {
+  (state.roadmap?.weeks || []).forEach((week) => {
     const block = document.createElement('div');
     block.className = 'week-block';
 
@@ -273,12 +288,15 @@ document.getElementById('startInterviewBtn').addEventListener('click', async () 
 
 document.getElementById('sendAnswerBtn').addEventListener('click', sendAnswer);
 chatInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendAnswer();
+  if (e.key === 'Enter' && !e.isComposing) sendAnswer();
 });
+
+let answerPending = false;
 
 async function sendAnswer() {
   const text = chatInput.value.trim();
-  if (!text || !state.interviewSessionId) return;
+  if (!text || !state.interviewSessionId || answerPending) return;
+  answerPending = true;
 
   appendMessage(text, 'user');
   chatInput.value = '';
@@ -303,6 +321,8 @@ async function sendAnswer() {
     hideTyping();
     appendMessage('Error: ' + err.message, 'agent');
     toast(err.message, 'error');
+  } finally {
+    answerPending = false;
   }
 }
 
@@ -313,21 +333,48 @@ function showFinalEvaluation(evalData) {
 
   state.interviewScore = evalData.overall_score;
 
+  // Build the result with DOM nodes (not innerHTML): the evaluation is model
+  // output shaped by the uploaded CV, so it must never be parsed as HTML.
   const container = document.getElementById('finalScores');
-  container.innerHTML = `
-    <div class="metric-list">
-      <div class="metric-row"><span>Technical</span><span class="mono">${evalData.technical_score}</span></div>
-      <div class="metric-row"><span>Communication</span><span class="mono">${evalData.communication_score}</span></div>
-      <div class="metric-row"><span>Completeness</span><span class="mono">${evalData.completeness_score}</span></div>
-      <div class="metric-row"><span>Overall</span><span class="mono">${evalData.overall_score}</span></div>
-    </div>
-    <h4 style="margin-top:16px;">Strengths</h4>
-    <ul>${(evalData.strengths || []).map((s) => `<li>${s}</li>`).join('')}</ul>
-    <h4>Areas to improve</h4>
-    <ul>${(evalData.areas_to_improve || []).map((s) => `<li>${s}</li>`).join('')}</ul>
-  `;
+  container.replaceChildren();
+
+  const metrics = document.createElement('div');
+  metrics.className = 'metric-list';
+  [
+    ['Technical', evalData.technical_score],
+    ['Communication', evalData.communication_score],
+    ['Completeness', evalData.completeness_score],
+    ['Overall', evalData.overall_score],
+  ].forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'metric-row';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const score = document.createElement('span');
+    score.className = 'mono';
+    score.textContent = value ?? '—';
+    row.append(name, score);
+    metrics.appendChild(row);
+  });
+  container.appendChild(metrics);
+
+  appendList(container, 'Strengths', evalData.strengths, 'margin-top:16px;');
+  appendList(container, 'Areas to improve', evalData.areas_to_improve);
 
   renderDashboard();
+}
+
+function appendList(container, heading, items, style) {
+  const h = document.createElement('h4');
+  h.textContent = heading;
+  if (style) h.style.cssText = style;
+  const ul = document.createElement('ul');
+  (items || []).forEach((item) => {
+    const li = document.createElement('li');
+    li.textContent = item;
+    ul.appendChild(li);
+  });
+  container.append(h, ul);
 }
 
 // ---------- JOBS ----------
@@ -373,11 +420,20 @@ async function searchJobs() {
     data.jobs.forEach((job) => {
       const card = document.createElement('div');
       card.className = 'job-card';
-      card.innerHTML = `
-        <h4>${job.title}</h4>
-        <div class="job-company">${job.company} — ${job.location}</div>
-        <a href="${job.url}" target="_blank" rel="noopener">View posting →</a>
-      `;
+      const title = document.createElement('h4');
+      title.textContent = job.title;
+      const company = document.createElement('div');
+      company.className = 'job-company';
+      company.textContent = `${job.company} — ${job.location}`;
+      card.append(title, company);
+      if (job.url) {
+        const link = document.createElement('a');
+        link.href = job.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'View posting →';
+        card.appendChild(link);
+      }
       listEl.appendChild(card);
     });
   } catch (err) {
