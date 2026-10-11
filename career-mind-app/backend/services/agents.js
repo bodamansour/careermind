@@ -179,6 +179,16 @@ function parseModelJSON(raw) {
   throw new Error('Could not parse JSON from agent response: ' + raw.slice(0, 200));
 }
 
+// Number(null), Number('') and Number(true) are 0, 0 and 1, which would make
+// any reply carrying "overall_score": null look like a final evaluation.
+// Only real numbers and numeric strings ("85", "85%") count; clamp to 0-100.
+function toScore(value) {
+  if (typeof value === 'string') value = value.trim().replace(/%$/, '');
+  if (typeof value !== 'number' && (typeof value !== 'string' || value === '')) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : null;
+}
+
 // ---------- Public API ----------
 
 /** Runs a single-shot agent (1-5) and returns its reply parsed as JSON. */
@@ -235,6 +245,7 @@ module.exports = {
   agentMode,
   missingAgents,
   parseModelJSON,
+  toScore,
   runJSONAgent,
   runInterviewTurn,
 };
