@@ -85,3 +85,11 @@ test("every $('Node') reference points at a node in the export", () => {
     assert.ok(names.has(name), `the workflow reads $('${name}'), which isn't a node`);
   }
 });
+
+test('jobs are scored by CareerMind or by Gemini, never both', () => {
+  const branches = workflow.connections['Score With CareerMind?'].main;
+  assert.deepEqual(branches.map((b) => b.map((t) => t.node)), [['CareerMind Score'], ['Score Job Match']]);
+  assert.deepEqual(workflow.connections['Prepare Jobs For Scoring'].main[0].map((t) => t.node), ['Score With CareerMind?']);
+  const deepCheck = JSON.stringify(workflow.nodes.find((n) => n.name === 'Deep Check?').parameters);
+  assert.match(deepCheck, /careermind_email/);
+});

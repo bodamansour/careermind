@@ -388,3 +388,45 @@ test('Build Report shows the skill gaps next to a manual-application job', () =>
   const out = report([row(1, { status: 'needs_manual', match_score: 85, skill_gaps: 'Docker, SQL' })]);
   assert.match(out.full_text, /ناقصك: Docker, SQL/);
 });
+
+// ---------- CareerMind scoring ----------
+
+test('Map CareerMind Scores keeps the job order and the shape Plan Applications reads', () => {
+  const jobs = [{ row_id: 1 }, { row_id: 2 }];
+  const out = run('Map CareerMind Scores', {
+    nodes: { 'Prepare Jobs For Scoring': jobs },
+    input: [
+      { results: [{ score: 84, meets_level: true, missing_skills: ['Docker'], partial_match_skills: ['SQL'] }] },
+      { error: { message: '502 - Bad gateway' } },
+    ],
+  });
+  assert.equal(out.length, 2);
+  assert.deepEqual(out[0].output, { score: 84, reason_ar: 'ناقصك: Docker', meets_level: true });
+  assert.equal(out[0].skill_gaps, 'Docker, SQL');
+  assert.equal(out[0].careermind_score, 84);
+  assert.deepEqual(out[1].output, {});
+  assert.match(out[1].careermind_error, /502/);
+
+  // Plan Applications reads these replies like Gemini's.
+  const planned = run('Plan Applications', {
+    nodes: {
+      'Load Settings': [templateSettings()],
+      'Prepare Jobs For Scoring': [{ row_id: 1, title: 'A', apply_email: 'jobs@example.com' }, { row_id: 2, title: 'B' }],
+      'Count Today Applications': [],
+    },
+    input: out,
+  });
+  const byRow = Object.fromEntries(planned.map((p) => [p.row_id, p]));
+  assert.equal(byRow[1].status, 'needs_manual');
+  assert.equal(byRow[2].status, 'score_failed');
+});
+
+test('Map CareerMind Scores stops the run when every call failed', () => {
+  assert.throws(
+    () => run('Map CareerMind Scores', {
+      nodes: { 'Prepare Jobs For Scoring': [{ row_id: 1 }] },
+      input: [{ results: [{ error: 'No CareerMind account uses that email.' }] }],
+    }),
+    /every job: No CareerMind account/
+  );
+});

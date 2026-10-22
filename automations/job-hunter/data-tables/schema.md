@@ -28,6 +28,7 @@ Create these three tables in n8n (**Overview → Data tables → Create**) with 
 | extra_rss_feeds | string | optional extra RSS job feeds |
 | news_query_en / news_query_ar | string | Google News search queries |
 | careermind_url | string | optional: your CareerMind app URL (e.g. `https://my-careermind.vercel.app`). When set, strong matches get a skill-gap check through `POST /api/match` |
+| careermind_email | string | optional: the email of your CareerMind account. With `careermind_url`, every job is scored by CareerMind instead of Gemini and appears in the app's **My jobs** |
 
 ## jh_jobs
 `job_key` string · `dedup_key` string · `source` string · `title` string · `company` string · `location` string · `work_mode` string · `salary_min` number · `salary_max` number · `salary_currency` string · `salary_period` string · `posted_at` date · `apply_url` string · `apply_email` string · `skills` string · `is_fresh` boolean · `match_score` number · `match_reason` string · `status` string · `status_note` string · `gmail_thread_id` string · `confirmation_ref` string · `applied_at` date · `confirmed_at` date · `found_at` date · `description` string · `careermind_score` number · `skill_gaps` string

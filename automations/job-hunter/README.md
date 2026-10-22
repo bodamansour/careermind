@@ -2,7 +2,9 @@
 
 > Part of [CareerMind](../../README.md): the candidate-side automation.
 
-An n8n workflow that searches for entry-level tech jobs every morning, scores each one against your CV with Google Gemini, and sends you a daily summary on WhatsApp through the WhatsApp Business Cloud API.
+An n8n workflow that searches for entry-level tech jobs every morning, scores each one against your CV, and sends you a daily summary on WhatsApp through the WhatsApp Business Cloud API.
+
+Scoring is done by **CareerMind** when it's connected (recommended: one engine, and every job also shows up in the app's **My jobs**), or by Google Gemini inside n8n when it isn't. See [Scoring with CareerMind](#scoring-with-careermind-recommended).
 
 > 🇪🇬 النسخة العربية تحت.
 
@@ -13,7 +15,7 @@ An n8n workflow that searches for entry-level tech jobs every morning, scores ea
 | 08:00 | **Collect** | Pulls jobs from Remotive, RemoteOK, Arbeitnow and WeWorkRemotely, plus optional Greenhouse/Lever company boards and custom RSS feeds. |
 | | **Filter** | Keeps titles that match your keywords and drops senior roles. Accepts only your locations or remote roles open to your region, and only jobs posted within the last 30 days. |
 | | **Deduplicate** | Stores every job in an n8n Data Table so it is never processed twice. |
-| | **Score** | Gemini rates each fresh job 0–100 using **only your CV text**, plus a one-line reason in Arabic. Jobs that fail to score are retried on the next run. |
+| | **Score** | CareerMind (or Gemini, if CareerMind isn't connected) rates each fresh job 0–100 against **your CV only**, with the skills you're missing. Jobs that fail to score are retried on the next run. |
 | | **Route** | Strong matches go to a "needs manual application" list, with the apply link or the email address to send your CV to. Email auto-apply is off by default and not complete yet (see [Auto-apply](#auto-apply-not-working-yet)). |
 | | **Gap check** | *(optional)* For strong matches, CareerMind lists the skills you're missing (see [Skill gaps](#skill-gaps-from-careermind-optional)). |
 | 09:00 | **Analyse** | Shows the most requested skills across the last 30 days and the average advertised salary. The average is grouped by currency and period and lists its sources. If fewer than 5 postings mention a salary, the report says the data is insufficient instead of guessing. |
@@ -45,8 +47,18 @@ Keep `auto_apply_enabled = false`. The export is missing the Outlook node that s
 
 To finish it: add a Microsoft Outlook node named **Create Application Email** between **Download CV PDF** and **Mark Email Sent** that sends the cover letter with the CV attached, connect a Microsoft OAuth2 credential, then set `auto_apply_enabled = true` and `cv_pdf_url`. **Check Outlook Replies** (reply tracking) and **Email Error Alert** are in the export but disabled; enable them with the same credential.
 
-## Skill gaps from CareerMind (optional)
-Strong matches (the "needs manual application" list) can get a second check from the CareerMind app: it compares your CV with the job and lists the skills you're missing. The WhatsApp details then show them next to each job (`ناقصك: Docker, SQL`).
+## Scoring with CareerMind (recommended)
+With `careermind_url` **and** `careermind_email` set, the workflow skips Gemini and sends each fresh job to CareerMind's `POST /api/hunter/jobs`. CareerMind stores the job, scores it against the CV saved in your account, and returns the score, the missing skills and whether the level fits. The report shows the same scores, and the jobs appear in the app under **My jobs**, where one click runs the full analysis and mock interview.
+
+1. Deploy CareerMind with accounts on (see the [main README](../../README.md#my-jobs-accounts)) and set `CAREERMIND_API_KEY` on it.
+2. Sign up in the app and upload your CV under **My jobs**.
+3. In n8n, create a **Header Auth** credential named `CareerMind API Key`: name `x-api-key`, value = the same key. Pick it in the **CareerMind Score** node.
+4. In `jh_settings`, set `careermind_url` to your app URL and `careermind_email` to your account email.
+
+If one call fails, that job is retried on the next run. If every call fails (wrong key, no account, no CV), the run stops and the error alert says why.
+
+## Skill gaps from CareerMind (Gemini mode only)
+Without `careermind_email`, scoring stays on Gemini, and strong matches (the "needs manual application" list) can get a second check from the CareerMind app: it compares your CV with the job and lists the skills you're missing. The WhatsApp details then show them next to each job (`ناقصك: Docker, SQL`).
 
 1. Deploy CareerMind and set `CAREERMIND_API_KEY` on it (see the [main README](../../README.md#the-match-api)).
 2. In n8n, create a **Header Auth** credential named `CareerMind API Key`: name `x-api-key`, value = the same key. Pick it in the **CareerMind Gap Check** node.
@@ -76,7 +88,7 @@ Run them after re-exporting the workflow. GitHub Actions runs them on every pull
 
 ## 🇪🇬 بالعربي
 
-Workflow على n8n بيدوّر كل يوم الصبح على وظائف تقنية للمبتدئين والمتدربين. بيقيّم كل وظيفة على أساس الـCV بتاعك باستخدام Gemini، ويبعتلك ملخص يومي على واتساب.
+Workflow على n8n بيدوّر كل يوم الصبح على وظائف تقنية للمبتدئين والمتدربين. بيقيّم كل وظيفة على أساس الـCV بتاعك ويبعتلك ملخص يومي على واتساب. التقييم بيتم بـ CareerMind لو ربطته (`careermind_url` و `careermind_email`)، وساعتها كل الوظايف بتظهر كمان في صفحة **My jobs** في الموقع. لو مش مربوط، التقييم بيتم بـ Gemini جوه n8n.
 
 **المراحل:**
 - **الساعة 8**:

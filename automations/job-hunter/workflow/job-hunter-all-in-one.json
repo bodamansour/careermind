@@ -1766,6 +1766,16 @@
                 "operation": "notEmpty",
                 "singleValue": true
               }
+            },
+            {
+              "id": "450378cb-723e-4321-9677-d86eb1aeacfb",
+              "leftValue": "={{ $('Load Settings').first().json.careermind_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -1880,6 +1890,131 @@
       "typeVersion": 1.1,
       "position": [
         3824,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1218aa0b-c4ae-4c5a-bdc9-f7e37bef553e",
+              "leftValue": "={{ $('Load Settings').first().json.careermind_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "889dc457-27c2-47b7-8f30-2d4309e87bfc",
+              "leftValue": "={{ $('Load Settings').first().json.careermind_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5966a735-9c0c-4878-abd9-6bd0f5734f5c",
+      "name": "Score With CareerMind?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2336,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($('Load Settings').first().json.careermind_url).replace(/\\/+$/, '') }}/api/hunter/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ report_for: String($('Load Settings').first().json.careermind_email).trim(), jobs: [{ source: $json.source || 'job-hunter', external_id: $json.job_key || $json.dedup_key, title: $json.title, company: $json.company, location: [$json.location, $json.work_mode].filter(Boolean).join(' · '), description: String($json.description || '').slice(0, 20000), salary: ($json.salary_min || $json.salary_max) ? [[$json.salary_min, $json.salary_max].filter(Boolean).join('-'), $json.salary_currency, $json.salary_period && ('per ' + $json.salary_period)].filter(Boolean).join(' ') : null, url: $json.apply_url, apply_email: $json.apply_email, posted_at: $json.posted_at }] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "be15fb48-2e11-42de-9da3-1a166dc7cab1",
+      "name": "CareerMind Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2560,
+        880
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CareerMind API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns each CareerMind reply into the shape Plan Applications reads\n// ({ output: { score, reason_ar, meets_level } }), in the same order as the\n// jobs. A job whose call failed gets no score and is retried on the next run;\n// if every call failed, the run stops so the error alert explains why.\nconst jobs = $('Prepare Jobs For Scoring').all();\nconst errorOf = (j) => {\n  const e = j && j.error;\n  if (!e) return '';\n  return String((e.message || e.description || e) + (e.description && e.message ? ': ' + e.description : '')).slice(0, 300);\n};\nconst out = $input.all().map((item, i) => {\n  const job = (jobs[i] && jobs[i].json) || {};\n  const reply = item.json || {};\n  const r = (Array.isArray(reply.results) && reply.results[0]) || {};\n  if (typeof r.score !== 'number') {\n    return { json: { row_id: job.row_id, output: {}, careermind_error: errorOf(reply) || String(r.error || 'no score') } };\n  }\n  const missing = (r.missing_skills || []).map(String).filter(Boolean);\n  const gaps = missing.concat((r.partial_match_skills || []).map(String)).filter(Boolean);\n  const reason = missing.length ? 'ناقصك: ' + missing.slice(0, 4).join('، ') : 'الـCV بيغطي المتطلبات الأساسية للوظيفة';\n  return { json: {\n    row_id: job.row_id,\n    output: { score: r.score, reason_ar: reason, meets_level: r.meets_level !== false },\n    careermind_score: r.score,\n    skill_gaps: gaps.slice(0, 8).join(', ').slice(0, 300),\n  } };\n});\nconst failed = out.filter((o) => o.json.careermind_error);\nif (out.length && failed.length === out.length) {\n  throw new Error('CareerMind scoring failed for every job: ' + failed[0].json.careermind_error);\n}\nreturn out;"
+      },
+      "id": "43fc88d7-2d02-4a12-a2a3-06d43e4c327f",
+      "name": "Map CareerMind Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0cb8d428-ef48-445b-ad59-3614ead093df",
+              "leftValue": "={{ $json.careermind_score }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d448804b-17d7-4852-9659-b077b631e9d3",
+      "name": "Keep CareerMind Scored",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        3008,
         1040
       ]
     }
@@ -2036,7 +2171,7 @@
       "main": [
         [
           {
-            "node": "Score Job Match",
+            "node": "Score With CareerMind?",
             "type": "main",
             "index": 0
           }
@@ -2411,6 +2546,62 @@
       ]
     },
     "Format Skill Gaps": {
+      "main": [
+        [
+          {
+            "node": "Save Skill Gaps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score With CareerMind?": {
+      "main": [
+        [
+          {
+            "node": "CareerMind Score",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Job Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CareerMind Score": {
+      "main": [
+        [
+          {
+            "node": "Map CareerMind Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map CareerMind Scores": {
+      "main": [
+        [
+          {
+            "node": "Plan Applications",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Keep CareerMind Scored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep CareerMind Scored": {
       "main": [
         [
           {
