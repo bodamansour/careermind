@@ -495,7 +495,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const S = $('Load Settings').first().json;\nif (!String(S.cv_text || '').trim()) { throw new Error('cv_text is empty in jh_settings - paste your CV text first so scoring is based on your real CV.'); }\nconst lower = v => String(v == null ? '' : v).toLowerCase();\nconst targets = String(S.target_keywords || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);\nconst seen = new Set();\nconst out = [];\nfor (const i of $input.all()) {\n  const r = i.json || {};\n  if (!r.id || !r.description) continue;\n  if (r.status !== 'pending_score' && r.status !== 'score_failed') continue;\n  const k = r.job_key || r.dedup_key;\n  if (seen.has(k)) continue;\n  seen.add(k);\n  const hay = lower(r.title + ' ' + r.description);\n  const rank = targets.filter(t => hay.includes(t)).length;\n  out.push({ json: Object.assign({}, r, { row_id: r.id, rank }) });\n}\nout.sort((a, b) => b.json.rank - a.json.rank);\nreturn out.slice(0, 40);"
+        "jsCode": "const S = $('Load Settings').first().json;\n// Jobs are scored only by CareerMind, against the CV saved in your account.\nif (!String(S.careermind_url || '').trim() || !String(S.careermind_email || '').trim()) { throw new Error('careermind_url and careermind_email are empty in jh_settings - Job Hunter scores jobs with CareerMind only. Set your CareerMind app URL and account email (see the README).'); }\nconst lower = v => String(v == null ? '' : v).toLowerCase();\nconst targets = String(S.target_keywords || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);\nconst seen = new Set();\nconst out = [];\nfor (const i of $input.all()) {\n  const r = i.json || {};\n  if (!r.id || !r.description) continue;\n  if (r.status !== 'pending_score' && r.status !== 'score_failed') continue;\n  const k = r.job_key || r.dedup_key;\n  if (seen.has(k)) continue;\n  seen.add(k);\n  const hay = lower(r.title + ' ' + r.description);\n  const rank = targets.filter(t => hay.includes(t)).length;\n  out.push({ json: Object.assign({}, r, { row_id: r.id, rank }) });\n}\nout.sort((a, b) => b.json.rank - a.json.rank);\nreturn out.slice(0, 40);"
       },
       "id": "c287f778-21e9-4df3-9d24-7fa15f12a40e",
       "name": "Prepare Jobs For Scoring",
@@ -508,69 +508,7 @@
     },
     {
       "parameters": {
-        "modelName": "models/gemini-3.1-flash-lite",
-        "options": {
-          "maxOutputTokens": 600,
-          "temperature": 0.1
-        }
-      },
-      "id": "4dba14d8-689e-4b14-b3d9-cc6d86e447a9",
-      "name": "Gemini Scoring Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1,
-      "position": [
-        2480,
-        864
-      ],
-      "credentials": {
-        "googlePalmApi": {
-          "name": "Google Gemini(PaLM) Api account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsonSchemaExample": "{\n  \"score\": 72,\n  \"reason_ar\": \"سبب مختصر بالعربي\",\n  \"meets_level\": true\n}"
-      },
-      "id": "67ef5eca-fa06-4a76-8419-f8781fbed946",
-      "name": "Score JSON Parser",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
-      "position": [
-        2640,
-        864
-      ]
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "=CANDIDATE CV (the only source of truth about the candidate):\n{{ $('Load Settings').first().json.cv_text }}\n\nCANDIDATE CONDITIONS:\n- Target roles: {{ $('Load Settings').first().json.target_keywords }}\n- Level: university student (penultimate year) seeking internship / entry-level / junior / graduate roles only. Roles needing 2+ years of professional experience or senior level must score below 50.\n- Accepted locations: {{ $('Load Settings').first().json.locations }}; remote accepted: {{ $('Load Settings').first().json.remote_ok }}\n- Minimum salary: {{ $('Load Settings').first().json.min_salary }} {{ $('Load Settings').first().json.min_salary_currency }} per {{ $('Load Settings').first().json.min_salary_period }} (0 means no minimum)\n\nJOB POSTING:\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }} ({{ $json.work_mode }})\nSalary: {{ $json.salary_min || \"not stated\" }} - {{ $json.salary_max || \"\" }} {{ $json.salary_currency }} {{ $json.salary_period }}\nDescription: {{ $json.description }}\n\nTASK: Score 0-100 how well this job fits the candidate. Give 80+ only when the CV clearly covers the core requirements AND the level/location/salary conditions are met. Do not assume skills that are not written in the CV. reason_ar = one short Arabic sentence (max 25 words). meets_level = false if the job needs more seniority than the candidate has.",
-        "hasOutputParser": true,
-        "messages": {
-          "messageValues": [
-            {
-              "message": "You are a strict, honest job-matching assistant. Judge only from the provided CV and posting. Never invent candidate experience. Calibrate conservatively: the candidate's professional experience is only a 1-week internship plus personal projects. 90-100 = nearly every stated requirement is explicitly evidenced in the CV and the role is clearly intern/junior level; 80-89 = core requirements evidenced with minor gaps; 60-79 = partial fit; below 60 = weak fit, wrong field, or seniority above junior. Roles outside software/AI/data/automation/IT (e.g. design, video, sales) must score below 40."
-            }
-          ]
-        },
-        "batching": {
-          "batchSize": 1,
-          "delayBetweenBatches": 4000
-        }
-      },
-      "id": "e839d1c8-ece7-495c-8788-1c7c1956dc1b",
-      "name": "Score Job Match",
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.7,
-      "position": [
-        2480,
-        640
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const S = $('Load Settings').first().json;\nconst jobs = $('Prepare Jobs For Scoring').all();\nconst res = $input.all();\nconst maxApps = Number(S.max_daily_applications) || 5;\nconst th = Number(S.auto_apply_threshold) || 80;\nconst already = $('Count Today Applications').all().filter(i => i.json && i.json.id).length;\nlet quota = Math.max(0, maxApps - already);\nconst enabled = S.auto_apply_enabled === true;\nconst hasCv = !!String(S.cv_pdf_url || '').trim();\nconst minSal = Number(S.min_salary) || 0;\nconst salaryOk = j => {\n  if (!minSal || (!j.salary_min && !j.salary_max)) return true;\n  if (String(j.salary_currency).toUpperCase() !== String(S.min_salary_currency || '').toUpperCase() || j.salary_period !== S.min_salary_period) return true;\n  return (Number(j.salary_max) || Number(j.salary_min)) >= minSal;\n};\nconst merged = jobs.map((j, i) => {\n  const o = (res[i] && res[i].json && res[i].json.output) || {};\n  const scored = o.score !== undefined && o.score !== null;\n  return Object.assign({}, j.json, { score: scored ? Math.max(0, Math.min(100, Math.round(Number(o.score) || 0))) : 0, reason: scored ? String(o.reason_ar || '').slice(0, 300) : 'تعذّر التقييم الآلي لهذه الوظيفة', meets_level: o.meets_level !== false, scored });\n});\nmerged.sort((a, b) => b.score - a.score);\nreturn merged.map(j => {\n  let action = 'none';\n  let status = j.scored ? 'scored' : 'score_failed';\n  let note = '';\n  const salOk = salaryOk(j);\n  if (!salOk) note = 'الراتب المعلن أقل من الحد الأدنى';\n  if (j.score >= th && j.meets_level && salOk) {\n    action = 'manual';\n    status = 'needs_manual';\n    if (!j.apply_email) note = 'التقديم من موقع الجهة (نموذج أو تسجيل دخول)';\n    else if (!enabled) note = 'ابعت الـCV بالإيميل على ' + j.apply_email;\n    else if (!hasCv) note = 'رابط ملف الـCV (cv_pdf_url) غير مضبوط';\n    else if (quota <= 0) note = 'تم الوصول للحد اليومي للطلبات';\n    else { action = 'auto_apply'; status = 'applying'; quota -= 1; }\n  }\n  return { json: Object.assign({}, j, { action, status, status_note: note }) };\n});\n"
+        "jsCode": "const S = $('Load Settings').first().json;\nconst jobs = $('Prepare Jobs For Scoring').all();\nconst res = $input.all();\nconst th = Number(S.auto_apply_threshold) || 80;\n// Auto-apply is switched off: an application is never sent without the user.\n// Strong matches always go to the manual list (auto_apply_enabled is ignored).\nconst minSal = Number(S.min_salary) || 0;\nconst salaryOk = j => {\n  if (!minSal || (!j.salary_min && !j.salary_max)) return true;\n  if (String(j.salary_currency).toUpperCase() !== String(S.min_salary_currency || '').toUpperCase() || j.salary_period !== S.min_salary_period) return true;\n  return (Number(j.salary_max) || Number(j.salary_min)) >= minSal;\n};\nconst merged = jobs.map((j, i) => {\n  const o = (res[i] && res[i].json && res[i].json.output) || {};\n  const scored = o.score !== undefined && o.score !== null;\n  return Object.assign({}, j.json, { score: scored ? Math.max(0, Math.min(100, Math.round(Number(o.score) || 0))) : 0, reason: scored ? String(o.reason_ar || '').slice(0, 300) : 'تعذّر التقييم الآلي لهذه الوظيفة', meets_level: o.meets_level !== false, scored });\n});\nmerged.sort((a, b) => b.score - a.score);\nreturn merged.map(j => {\n  let action = 'none';\n  let status = j.scored ? 'scored' : 'score_failed';\n  let note = '';\n  const salOk = salaryOk(j);\n  if (!salOk) note = 'الراتب المعلن أقل من الحد الأدنى';\n  if (j.score >= th && j.meets_level && salOk) {\n    action = 'manual';\n    status = 'needs_manual';\n    if (!j.apply_email) note = 'التقديم من موقع الجهة (نموذج أو تسجيل دخول)';\n    else note = 'ابعت الـCV بالإيميل على ' + j.apply_email;\n  }\n  return { json: Object.assign({}, j, { action, status, status_note: note }) };\n});\n"
       },
       "id": "7109ea1a-6699-478a-bc15-100b3d42d2a3",
       "name": "Plan Applications",
@@ -764,7 +702,8 @@
         "googlePalmApi": {
           "name": "Google Gemini(PaLM) Api account"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {
@@ -782,7 +721,8 @@
       "position": [
         3360,
         640
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -804,7 +744,8 @@
         3584,
         640
       ],
-      "onError": "continueErrorOutput"
+      "onError": "continueErrorOutput",
+      "disabled": true
     },
     {
       "parameters": {
@@ -899,7 +840,8 @@
       "position": [
         4256,
         688
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -1740,106 +1682,6 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "39a047d1-02ff-4ff3-aa01-e00f6335f238",
-              "leftValue": "={{ $json.status }}",
-              "rightValue": "needs_manual",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            },
-            {
-              "id": "1ac0fb94-cfb4-4155-8e16-e9112f2ce5e5",
-              "leftValue": "={{ $('Load Settings').first().json.careermind_url }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "450378cb-723e-4321-9677-d86eb1aeacfb",
-              "leftValue": "={{ $('Load Settings').first().json.careermind_email }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "empty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "e168a6d1-5298-441d-b01b-94260714b9fb",
-      "name": "Deep Check?",
-      "type": "n8n-nodes-base.filter",
-      "typeVersion": 2.2,
-      "position": [
-        3152,
-        1040
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ String($('Load Settings').first().json.careermind_url).replace(/\\/+$/, '') }}/api/match",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ cvText: String($('Load Settings').first().json.cv_text).slice(0, 20000), jdText: [$json.title, $json.company, $json.description].filter(Boolean).join('\\n').slice(0, 20000) }) }}",
-        "options": {
-          "batching": {
-            "batch": {
-              "batchSize": 1,
-              "batchInterval": 3000
-            }
-          },
-          "timeout": 120000
-        }
-      },
-      "id": "afd3e4e2-0943-4289-9307-b9fde5d9eddd",
-      "name": "CareerMind Gap Check",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3376,
-        1040
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "CareerMind API Key"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Pairs each CareerMind reply with the job it was asked about and keeps the\n// missing skills. A failed call (no score in the reply) is skipped, so the\n// job keeps its Gemini score and the report simply shows no gaps for it.\nconst jobs = $('Deep Check?').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n  const r = item.json || {};\n  const job = jobs[i] && jobs[i].json;\n  if (!job || !job.row_id || typeof r.job_match_score !== 'number') return;\n  const gaps = [].concat(r.missing_skills || [], r.partial_match_skills || []).map(String).filter(Boolean);\n  out.push({ json: { row_id: job.row_id, careermind_score: r.job_match_score, skill_gaps: gaps.slice(0, 8).join(', ').slice(0, 300) } });\n});\nreturn out;"
-      },
-      "id": "1ba2d669-83dd-443e-a2cc-bcf2f6a02955",
-      "name": "Format Skill Gaps",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3600,
-        1040
-      ]
-    },
-    {
-      "parameters": {
         "operation": "update",
         "dataTableId": {
           "__rl": true,
@@ -1891,50 +1733,6 @@
       "position": [
         3824,
         1040
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "1218aa0b-c4ae-4c5a-bdc9-f7e37bef553e",
-              "leftValue": "={{ $('Load Settings').first().json.careermind_url }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "889dc457-27c2-47b7-8f30-2d4309e87bfc",
-              "leftValue": "={{ $('Load Settings').first().json.careermind_email }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "5966a735-9c0c-4878-abd9-6bd0f5734f5c",
-      "name": "Score With CareerMind?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        2336,
-        880
       ]
     },
     {
@@ -2171,40 +1969,7 @@
       "main": [
         [
           {
-            "node": "Score With CareerMind?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gemini Scoring Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Score Job Match",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Score JSON Parser": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Score Job Match",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Score Job Match": {
-      "main": [
-        [
-          {
-            "node": "Plan Applications",
+            "node": "CareerMind Score",
             "type": "main",
             "index": 0
           }
@@ -2216,11 +1981,6 @@
         [
           {
             "node": "Loop Jobs",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Deep Check?",
             "type": "main",
             "index": 0
           }
@@ -2517,57 +2277,6 @@
         [
           {
             "node": "Send WhatsApp Report",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Deep Check?": {
-      "main": [
-        [
-          {
-            "node": "CareerMind Gap Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CareerMind Gap Check": {
-      "main": [
-        [
-          {
-            "node": "Format Skill Gaps",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Format Skill Gaps": {
-      "main": [
-        [
-          {
-            "node": "Save Skill Gaps",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Score With CareerMind?": {
-      "main": [
-        [
-          {
-            "node": "CareerMind Score",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Score Job Match",
             "type": "main",
             "index": 0
           }

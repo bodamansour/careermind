@@ -147,15 +147,21 @@ test('Normalize marks jobs older than hours_window as not fresh', () => {
 
 // ---------- Prepare Jobs For Scoring ----------
 
-test('Prepare Jobs For Scoring refuses to run without a CV', () => {
+const CM = { careermind_url: 'https://careermind.example', careermind_email: 'me@example.com' };
+
+test('Prepare Jobs For Scoring refuses to run without CareerMind (no other scorer)', () => {
   assert.throws(
-    () => run('Prepare Jobs For Scoring', { nodes: { 'Load Settings': [{ ...templateSettings(), cv_text: ' ' }] } }),
-    /cv_text is empty/
+    () => run('Prepare Jobs For Scoring', { nodes: { 'Load Settings': [{ ...templateSettings(), ...CM, careermind_email: ' ' }] } }),
+    /CareerMind only/
+  );
+  assert.throws(
+    () => run('Prepare Jobs For Scoring', { nodes: { 'Load Settings': [{ ...templateSettings(), ...CM, careermind_url: '' }] } }),
+    /CareerMind only/
   );
 });
 
 test('Prepare Jobs For Scoring keeps unscored jobs once, best keyword match first', () => {
-  const settings = { ...templateSettings(), cv_text: 'My CV' };
+  const settings = { ...templateSettings(), ...CM };
   const out = run('Prepare Jobs For Scoring', {
     nodes: { 'Load Settings': [settings] },
     input: [
@@ -178,7 +184,7 @@ function plan({ settings = {}, jobs, scores, appliedToday = 0 }) {
       'Prepare Jobs For Scoring': jobs,
       'Count Today Applications': appliedToday ? Array.from({ length: appliedToday }, (_, i) => ({ id: i + 1 })) : [{}],
     },
-    input: scores.map((output) => (output ? { output } : { error: 'Gemini failed' })),
+    input: scores.map((output) => (output ? { output } : { output: {}, careermind_error: 'failed' })),
   });
 }
 
@@ -226,18 +232,18 @@ test('Plan Applications keeps a strong match out of the manual list if it misses
   assert.equal(byId[3].status, 'needs_manual'); // a different currency isn't compared
 });
 
-test('Plan Applications respects the daily auto-apply cap', () => {
+test('Plan Applications never auto-applies, even when auto_apply_enabled is true', () => {
   const out = plan({
-    settings: { auto_apply_enabled: true, cv_pdf_url: 'https://example.com/cv.pdf', max_daily_applications: 2 },
-    appliedToday: 1,
+    settings: { auto_apply_enabled: true, cv_pdf_url: 'https://example.com/cv.pdf', max_daily_applications: 5 },
     jobs: [
       { row_id: 1, apply_email: 'a@example.com' },
       { row_id: 2, apply_email: 'b@example.com' },
     ],
     scores: [{ score: 90 }, { score: 88 }],
   });
-  assert.deepEqual(out.map((j) => j.action), ['auto_apply', 'manual']);
-  assert.match(out[1].status_note, /حد اليومي/);
+  assert.deepEqual(out.map((j) => j.action), ['manual', 'manual']);
+  assert.deepEqual(out.map((j) => j.status), ['needs_manual', 'needs_manual']);
+  assert.match(out[0].status_note, /a@example\.com/);
 });
 
 // ---------- Build Report + Fit WhatsApp Limits ----------
@@ -367,22 +373,7 @@ test('Match Confirmations does nothing while the Outlook node is disabled', () =
   assert.deepEqual(out, []);
 });
 
-// ---------- CareerMind skill-gap check ----------
-
-test('Format Skill Gaps keeps the missing skills of each answered job and skips failed calls', () => {
-  const out = run('Format Skill Gaps', {
-    nodes: { 'Deep Check?': [{ row_id: 1 }, { row_id: 2 }, { row_id: 3 }] },
-    input: [
-      { job_match_score: 72, missing_skills: ['Docker'], partial_match_skills: ['SQL'] },
-      { error: { message: 'timeout' } },
-      { job_match_score: 90, missing_skills: [] },
-    ],
-  });
-  assert.deepEqual(out, [
-    { row_id: 1, careermind_score: 72, skill_gaps: 'Docker, SQL' },
-    { row_id: 3, careermind_score: 90, skill_gaps: '' },
-  ]);
-});
+// ---------- CareerMind skill gaps in the report ----------
 
 test('Build Report shows the skill gaps next to a manual-application job', () => {
   const out = report([row(1, { status: 'needs_manual', match_score: 85, skill_gaps: 'Docker, SQL' })]);
