@@ -67,71 +67,153 @@ const JOB = {
   external_id: '123',
   title: 'Automation Intern',
   company: 'Acme',
-  url: 'https://example.com/job/123',
+  url: 'https://remotive.com/remote-jobs/software-dev/automation-intern-123?utm_source=feed',
   description: 'We need an intern who knows n8n and Node.js to build automations.',
 };
 const KEY = { 'x-api-key': 'hunter-key' };
+const AUTH = { authorization: 'Bearer owner-token' };
+const OTHER_AUTH = { authorization: 'Bearer other-token' };
+const USERS = {
+  'owner-token': { id: OWNER, email: 'owner@example.com' },
+  'other-token': { id: OTHER, email: 'other@example.com' },
+};
+const hunt = (jobs, extra = {}) => call('POST', '/api/hunter/jobs', { report_for: 'owner@example.com', jobs, ...extra }, KEY);
 
-test('hunter API needs the key', async () => {
+// ---------- /api/hunter/jobs ----------
+
+test('hunter API needs the key and a report_for account', async () => {
   setClient(createFakeDb(seed()));
-  const res = await call('POST', '/api/hunter/jobs', { jobs: [JOB] }, { 'x-api-key': 'nope' });
-  assert.equal(res.status, 401);
+  assert.equal((await call('POST', '/api/hunter/jobs', { report_for: 'owner@example.com', jobs: [JOB] }, { 'x-api-key': 'nope' })).status, 401);
+  assert.equal((await call('POST', '/api/hunter/jobs', { jobs: [JOB] }, KEY)).status, 400);
+  assert.equal((await hunt([JOB], { report_for: 'nobody@example.com' })).status, 404);
+  assert.equal((await hunt([JOB], { report_for: 'nocv@example.com' })).status, 409);
 });
 
 test('hunter API validates the jobs', async () => {
   setClient(createFakeDb(seed()));
-  assert.equal((await call('POST', '/api/hunter/jobs', { jobs: [] }, KEY)).status, 400);
-  assert.equal((await call('POST', '/api/hunter/jobs', { jobs: [{ ...JOB, description: 'short' }] }, KEY)).status, 400);
-  const many = Array.from({ length: 11 }, (_, i) => ({ ...JOB, external_id: String(i) }));
-  assert.equal((await call('POST', '/api/hunter/jobs', { jobs: many }, KEY)).status, 400);
+  assert.equal((await hunt([])).status, 400);
+  assert.equal((await hunt([{ ...JOB, description: 'short' }])).status, 400);
+  assert.equal((await hunt(Array.from({ length: 11 }, (_, i) => ({ ...JOB, external_id: String(i) })))).status, 400);
 });
 
-test('hunter API stores a job, analyzes it once and scores it for every user with a CV', async (t) => {
-  const fake = createFakeDb(seed());
+test('a hunted job is stored once, scored by CareerMind for the owner only, and shows in their feed', async (t) => {
+  const fake = createFakeDb(seed(), USERS);
   setClient(fake);
   const calls = mockAgents(t);
 
-  const res = await call('POST', '/api/hunter/jobs', { jobs: [JOB], report_for: 'owner@example.com' }, KEY);
+  const res = await hunt([JOB]);
   assert.equal(res.status, 200);
-  assert.equal(res.data.users_scored, 2);
+  assert.deepEqual({ scored: res.data.scored, failed: res.data.failed }, { scored: 1, failed: 0 });
   const [r] = res.data.results;
+  assert.equal(r.score_status, 'scored');
   assert.equal(r.score, 82);
   assert.equal(r.meets_level, true);
   assert.deepEqual(r.missing_skills, ['n8n']);
 
   assert.equal(fake.tables.jobs.length, 1);
-  assert.equal(fake.tables.job_matches.length, 2);
-  const jobAnalyzerCalls = calls.mock.calls.filter((c) => c.arguments[1].messages[0].content === prompts.JOB_ANALYZER);
-  assert.equal(jobAnalyzerCalls.length, 1);
+  assert.deepEqual(fake.tables.job_matches.map((m) => m.user_id), [OWNER]);
+  assert.equal(fake.tables.job_matches[0].origin, 'job-hunter');
 
-  // Sending the same job again re-uses the stored analysis and scores.
+  // Same score in the app as in the hunter reply.
+  const feed = await call('GET', '/api/me/jobs', undefined, AUTH);
+  assert.equal(feed.data.jobs.length, 1);
+  assert.equal(feed.data.jobs[0].score, 82);
+  assert.equal(feed.data.jobs[0].job.source, 'remotive');
+  // Another user doesn't get the owner's job.
+  const other = await call('GET', '/api/me/jobs', undefined, OTHER_AUTH);
+  assert.equal(other.data.jobs.length, 0);
+
+  // Sending the same job again re-uses the stored analysis and score: no agent call.
   calls.mock.resetCalls();
-  const again = await call('POST', '/api/hunter/jobs', { jobs: [JOB], report_for: 'owner@example.com' }, KEY);
+  const again = await hunt([JOB]);
   assert.equal(again.data.results[0].score, 82);
   assert.equal(calls.mock.callCount(), 0);
   assert.equal(fake.tables.jobs.length, 1);
 });
 
+test('the same posting from another source (same URL) is merged, keeping both sources', async (t) => {
+  const fake = createFakeDb(seed(), USERS);
+  setClient(fake);
+  mockAgents(t);
+  await hunt([JOB]);
+  const sameUrl = { ...JOB, source: 'weworkremotely', external_id: 'wwr-9', url: 'https://www.remotive.com/remote-jobs/software-dev/automation-intern-123/' };
+  const res = await hunt([sameUrl]);
+  assert.equal(fake.tables.jobs.length, 1);
+  assert.equal(res.data.results[0].job_id, fake.tables.jobs[0].id);
+  assert.equal(fake.tables.jobs[0].source, 'remotive');
+  assert.deepEqual(fake.tables.jobs[0].sources, ['remotive', 'weworkremotely']);
+
+  // A generic careers page is not used to merge different jobs.
+  const generic = [
+    { ...JOB, external_id: 'a', title: 'Job A', url: 'https://acme.com/careers' },
+    { ...JOB, external_id: 'b', title: 'Job B', url: 'https://acme.com/careers' },
+  ];
+  await hunt(generic);
+  assert.equal(fake.tables.jobs.length, 3);
+});
+
+test('urlKey ignores tracking parameters, www and trailing slashes', () => {
+  const { urlKey } = require('../services/jobStore');
+  assert.equal(urlKey('https://www.Example.com/jobs/42/?utm_source=x&ref=y'), 'example.com/jobs/42');
+  assert.equal(urlKey('https://example.com/jobs?id=42&utm_medium=z'), 'example.com/jobs?id=42');
+  assert.equal(urlKey('https://example.com/careers'), null);
+  assert.equal(urlKey('javascript:alert(1)'), null);
+});
+
+test('a failed score is stored as failed with the error, never filled in by another engine', async (t) => {
+  const fake = createFakeDb(seed(), USERS);
+  setClient(fake);
+  t.mock.method(axios, 'post', async (url, body) => {
+    if (body.messages[0].content === prompts.JOB_ANALYZER) {
+      return { data: { choices: [{ message: { content: JSON.stringify({ job_title: 'X', seniority: 'intern' }) } }] } };
+    }
+    const err = new Error('Request failed');
+    err.response = { status: 429 };
+    throw err;
+  });
+
+  const res = await hunt([JOB]);
+  assert.equal(res.status, 200);
+  const [r] = res.data.results;
+  assert.equal(r.score_status, 'failed');
+  assert.equal(r.score, null);
+  assert.match(r.error, /rate limited/);
+  assert.equal(fake.tables.job_matches[0].score_status, 'failed');
+  assert.equal(fake.tables.job_matches[0].score, null);
+
+  // The app shows it as failed (retryable), even with a score filter.
+  const feed = await call('GET', '/api/me/jobs?min=70', undefined, AUTH);
+  assert.equal(feed.data.jobs.length, 1);
+  assert.equal(feed.data.jobs[0].score_status, 'failed');
+});
+
+test('a failed job is retried by the next hunt and by the retry button', async (t) => {
+  const s = seed();
+  const jobId = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000005';
+  s.jobs = [{ id: jobId, source: 'remotive', external_id: '123', title: 'Automation Intern', description: JOB.description, analysis: { job_title: 'Automation Intern', seniority: 'intern' }, sources: ['remotive'] }];
+  s.job_matches = [{ user_id: OWNER, job_id: jobId, score: null, score_status: 'failed', score_error: 'timeout', status: 'saved', scored_at: '2026-10-01T00:00:00Z' }];
+  const fake = createFakeDb(s, USERS);
+  setClient(fake);
+  mockAgents(t);
+
+  const retry = await call('POST', `/api/me/jobs/${jobId}/score`, {}, AUTH);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.score_status, 'scored');
+  assert.equal(retry.data.score, 82);
+  assert.equal(fake.tables.job_matches[0].status, 'saved', 'the user status is kept');
+
+  // Another user can't score a job that isn't in their list.
+  assert.equal((await call('POST', `/api/me/jobs/${jobId}/score`, {}, OTHER_AUTH)).status, 404);
+});
+
 test('hunter API flags senior roles', async (t) => {
   setClient(createFakeDb(seed()));
   mockAgents(t, { seniority: 'senior' });
-  const res = await call('POST', '/api/hunter/jobs', { jobs: [JOB], report_for: 'owner@example.com' }, KEY);
+  const res = await hunt([JOB]);
   assert.equal(res.data.results[0].meets_level, false);
 });
 
-test('hunter API explains an unknown report_for account', async (t) => {
-  setClient(createFakeDb(seed()));
-  mockAgents(t);
-  const res = await call('POST', '/api/hunter/jobs', { jobs: [JOB], report_for: 'nobody@example.com' }, KEY);
-  assert.equal(res.status, 404);
-  const noCv = await call('POST', '/api/hunter/jobs', { jobs: [JOB], report_for: 'nocv@example.com' }, KEY);
-  assert.equal(noCv.status, 409);
-});
-
 // ---------- /api/me ----------
-
-const AUTH = { authorization: 'Bearer owner-token' };
-const USERS = { 'owner-token': { id: OWNER, email: 'owner@example.com' } };
 
 test('me API requires a valid session', async () => {
   setClient(createFakeDb(seed(), USERS));
@@ -143,67 +225,89 @@ test('me API requires a valid session', async () => {
   assert.deepEqual(ok.data.cv.skills, ['Node.js']);
 });
 
-test('me API rescores only the jobs that need it, in small batches', async (t) => {
+test('rescore only touches the user own jobs that are failed or older than the CV', async (t) => {
   const s = seed();
+  const id = (i) => `aaaaaaaa-aaaa-4aaa-8aaa-00000000001${i}`;
   s.jobs = Array.from({ length: 6 }, (_, i) => ({
-    id: `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${i}`, source: 'x', external_id: String(i), title: 'Job ' + i,
+    id: id(i), source: 'x', external_id: String(i), title: 'Job ' + i,
     description: 'A job description that is long enough.', analysis: { job_title: 'Job' }, created_at: new Date().toISOString(),
   }));
-  s.job_matches = [{ user_id: OWNER, job_id: s.jobs[0].id, score: 50, scored_at: '2027-01-01T00:00:00Z', status: 'saved' }];
+  s.job_matches = [
+    { user_id: OWNER, job_id: id(0), score: 50, score_status: 'scored', scored_at: '2027-01-01T00:00:00Z', status: 'saved' }, // fresh
+    { user_id: OWNER, job_id: id(1), score: 40, score_status: 'scored', scored_at: '2025-01-01T00:00:00Z', status: 'applied' }, // older than CV
+    { user_id: OWNER, job_id: id(2), score: null, score_status: 'failed', scored_at: '2027-01-01T00:00:00Z', status: 'new' },
+    { user_id: OTHER, job_id: id(3), score: null, score_status: 'failed', scored_at: '2025-01-01T00:00:00Z', status: 'new' },
+  ];
   const fake = createFakeDb(s, USERS);
   setClient(fake);
   mockAgents(t);
 
-  const first = await call('POST', '/api/me/rescore', {}, AUTH);
-  assert.deepEqual(first.data, { scored: 4, failed: 0, remaining: 1 });
-  const second = await call('POST', '/api/me/rescore', {}, AUTH);
-  assert.deepEqual(second.data, { scored: 1, failed: 0, remaining: 0 });
-  assert.equal(fake.tables.job_matches.find((m) => m.job_id === s.jobs[0].id).status, 'saved');
+  const res = await call('POST', '/api/me/rescore', {}, AUTH);
+  assert.deepEqual(res.data, { scored: 2, failed: 0, remaining: 0 });
+  const mine = (j) => fake.tables.job_matches.find((m) => m.user_id === OWNER && m.job_id === id(j));
+  assert.equal(mine(1).score, 82);
+  assert.equal(mine(1).status, 'applied', 'statuses survive a rescore');
+  assert.equal(mine(2).score_status, 'scored');
+  assert.equal(fake.tables.job_matches.find((m) => m.user_id === OTHER).score_status, 'failed', 'other users untouched');
+  assert.equal(fake.tables.job_matches.length, 4, 'no new links are created');
 });
 
-test('me API changes a job status and rejects bad values', async () => {
+test('status changes are saved and filter the feed', async () => {
   const s = seed();
   const jobId = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000009';
-  s.job_matches = [{ user_id: OWNER, job_id: jobId, score: 70, status: 'new' }];
+  s.jobs = [{ id: jobId, source: 'x', external_id: '9', title: 'Job', created_at: new Date().toISOString() }];
+  s.job_matches = [{ user_id: OWNER, job_id: jobId, score: 70, score_status: 'scored', status: 'new' }];
   const fake = createFakeDb(s, USERS);
   setClient(fake);
   assert.equal((await call('PATCH', `/api/me/jobs/${jobId}`, { status: 'deleted' }, AUTH)).status, 400);
   assert.equal((await call('PATCH', '/api/me/jobs/not-a-uuid', { status: 'saved' }, AUTH)).status, 400);
+  assert.equal((await call('PATCH', `/api/me/jobs/${jobId}`, { status: 'hidden' }, OTHER_AUTH)).status, 404);
+
   const ok = await call('PATCH', `/api/me/jobs/${jobId}`, { status: 'applied' }, AUTH);
   assert.equal(ok.status, 200);
   assert.equal(fake.tables.job_matches[0].status, 'applied');
+  assert.equal((await call('GET', '/api/me/jobs?status=active', undefined, AUTH)).data.jobs.length, 0);
+  assert.equal((await call('GET', '/api/me/jobs?status=applied', undefined, AUTH)).data.jobs.length, 1);
 });
 
-test('me API analyzes a feed job with the saved CV and stores the analysis', async (t) => {
+test('analyzing a feed job uses its stored score, links the analysis to the job, and the feed reopens it', async (t) => {
   const s = seed();
   const jobId = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000007';
-  s.jobs = [{ id: jobId, source: 'x', external_id: '7', title: 'Automation Intern', description: 'A job description that is long enough.', analysis: null, url: 'https://e.com' }];
+  s.jobs = [{ id: jobId, source: 'x', external_id: '7', title: 'Automation Intern', description: 'A job description that is long enough.', analysis: { job_title: 'Automation Intern' }, url: 'https://e.com/jobs/7', created_at: new Date().toISOString() }];
+  s.job_matches = [{ user_id: OWNER, job_id: jobId, score: 64, score_status: 'scored', scored_at: '2027-01-01T00:00:00Z', matching_skills: ['Node.js'], missing_skills: ['n8n'], status: 'new' }];
   const fake = createFakeDb(s, USERS);
   setClient(fake);
-  mockAgents(t);
+  const calls = mockAgents(t);
 
   const res = await call('POST', `/api/me/jobs/${jobId}/analyze`, {}, AUTH);
   assert.equal(res.status, 200);
-  assert.equal(res.data.matching.job_match_score, 82);
-  assert.equal(res.data.roadmap.weeks.length, 1);
-  assert.ok(res.data.analysisId);
-  assert.equal(fake.tables.analyses.length, 1);
-  assert.equal(fake.tables.analyses[0].user_id, OWNER);
+  assert.equal(res.data.matching.job_match_score, 64, 'same score as the feed, not a new one');
+  const matchingCalls = calls.mock.calls.filter((c) => c.arguments[1].messages[0].content === prompts.MATCHING);
+  assert.equal(matchingCalls.length, 0);
+  assert.equal(fake.tables.analyses[0].job_id, jobId);
+
+  const feed = await call('GET', '/api/me/jobs', undefined, AUTH);
+  assert.equal(feed.data.jobs[0].analysis_id, res.data.analysisId);
 
   const saved = await call('PUT', `/api/me/analyses/${res.data.analysisId}/interview`, { evaluation: { overall_score: '77', strengths: ['clear'] } }, AUTH);
   assert.equal(saved.status, 200);
   assert.equal(fake.tables.analyses[0].interview.overall_score, 77);
+  // Another user can't analyze or read it.
+  assert.equal((await call('POST', `/api/me/jobs/${jobId}/analyze`, {}, OTHER_AUTH)).status, 404);
+  assert.equal((await call('GET', `/api/me/analyses/${res.data.analysisId}`, undefined, OTHER_AUTH)).status, 404);
 });
 
-test('me API saves a pasted job and scores it', async (t) => {
+test('a job saved from the site keeps its source and joins the same feed', async (t) => {
   const fake = createFakeDb(seed(), USERS);
   setClient(fake);
   mockAgents(t);
-  const res = await call('POST', '/api/me/jobs', { title: 'Automation Intern', description: 'We need an intern who knows n8n and Node.js.' }, AUTH);
+  const res = await call('POST', '/api/me/jobs', { title: 'Automation Intern', url: 'https://adzuna.com/details/555', description: 'We need an intern who knows n8n and Node.js.', source: 'adzuna' }, AUTH);
   assert.equal(res.status, 200);
   assert.equal(res.data.score, 82);
-  assert.equal(fake.tables.jobs[0].source, 'manual');
-  assert.equal(fake.tables.job_matches.filter((m) => m.user_id === OWNER).length, 1);
+  assert.equal(fake.tables.jobs[0].source, 'adzuna');
+  assert.equal(fake.tables.job_matches[0].origin, 'adzuna');
+  const feed = await call('GET', '/api/me/jobs', undefined, AUTH);
+  assert.equal(feed.data.jobs[0].job.source, 'adzuna');
 });
 
 test('config exposes only the public sign-in settings', async () => {

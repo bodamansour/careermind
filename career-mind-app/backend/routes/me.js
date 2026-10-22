@@ -77,25 +77,58 @@ router.post('/cv', upload.single('cvFile'), async (req, res, next) => {
 
 // ---------- Job feed ----------
 
-// GET /api/me/jobs?status=new&min=0  ->  scored jobs, best first
+const FEED_SELECT =
+  'job_id, score, score_status, score_error, matching_skills, partial_match_skills, missing_skills, summary, status, origin, scored_at, ' +
+  'job:jobs!inner(id, source, sources, title, company, location, url, salary, apply_email, posted_at, created_at)';
+
+/** The user's link to a job, or 404: users only reach jobs in their own list. */
+async function getMatch(userId, jobId) {
+  const rows = check(
+    await db().from('job_matches').select('*').eq('user_id', userId).eq('job_id', jobId).limit(1),
+    'load the job'
+  );
+  if (!rows[0]) throw new AppError('Job not found in your list.', 404);
+  return rows[0];
+}
+
+// GET /api/me/jobs?status=active&min=0  ->  the user's jobs, best first.
+// Jobs whose scoring failed are included (score null, score_status "failed")
+// so the app can offer a retry.
 router.get('/jobs', async (req, res, next) => {
   try {
     const status = String(req.query.status || 'active');
     const min = Math.max(0, Math.min(100, Number(req.query.min) || 0));
     let query = db()
       .from('job_matches')
-      .select('score, matching_skills, partial_match_skills, missing_skills, summary, status, scored_at, job:jobs!inner(id, source, title, company, location, url, salary, apply_email, posted_at, created_at)')
+      .select(FEED_SELECT)
       .eq('user_id', req.user.id)
       .gte('job.created_at', since(FEED_DAYS))
-      .gte('score', min)
       .order('score', { ascending: false, nullsFirst: false })
       .limit(150);
+    if (min > 0) query = query.or(`score.gte.${min},score_status.eq.failed`);
     if (status === 'active') query = query.in('status', ['new', 'saved']);
     else if (STATUSES.includes(status)) query = query.eq('status', status);
     else if (status !== 'all') throw new AppError('Unknown status filter.', 400);
 
     const rows = check(await query, 'load your jobs');
-    res.json({ jobs: rows });
+
+    // Latest saved analysis of each job, so the feed can reopen it.
+    const ids = rows.map((r) => r.job_id);
+    const analyses = ids.length
+      ? check(
+          await db()
+            .from('analyses')
+            .select('id, job_id, created_at')
+            .eq('user_id', req.user.id)
+            .in('job_id', ids)
+            .order('created_at', { ascending: false }),
+          'load your analyses'
+        )
+      : [];
+    const latest = new Map();
+    analyses.forEach((a) => !latest.has(a.job_id) && latest.set(a.job_id, a.id));
+
+    res.json({ jobs: rows.map((r) => ({ ...r, analysis_id: latest.get(r.job_id) || null })) });
   } catch (err) {
     next(err);
   }
@@ -117,7 +150,15 @@ router.patch('/jobs/:jobId', async (req, res, next) => {
   }
 });
 
-// POST /api/me/jobs  { title, company?, location?, url?, description }  ->  save one job and score it
+const scoreReply = (jobId, m) => ({
+  job_id: jobId,
+  score_status: m.score_status,
+  score: m.score,
+  score_error: m.score_error || null,
+  missing_skills: m.missing_skills || [],
+});
+
+// POST /api/me/jobs  { title, company?, location?, url?, description, source? }  ->  save one job and score it
 router.post('/jobs', async (req, res, next) => {
   try {
     const b = req.body || {};
@@ -137,41 +178,50 @@ router.post('/jobs', async (req, res, next) => {
     const profile = await getProfile(req.user.id);
     engine.requireCvProfile(profile);
     const [stored] = await jobStore.upsertJobs([job]);
-    const match = await jobStore.scoreFor(profile, stored);
-    res.json({ job_id: stored.id, score: match.score, missing_skills: match.missing_skills });
+    const [match] = await jobStore.scoreJobsForUser(profile, [stored], { origin: job.source });
+    res.json(scoreReply(stored.id, match));
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/me/rescore  ->  scores a few recent jobs that are new or older than the CV.
-// The app calls it repeatedly while `remaining` > 0 (short calls suit serverless limits).
+// POST /api/me/jobs/:jobId/score  ->  retry a failed (or outdated) score
+router.post('/jobs/:jobId/score', async (req, res, next) => {
+  try {
+    const jobId = uuidParam(req.params.jobId, 'job');
+    const profile = await getProfile(req.user.id);
+    engine.requireCvProfile(profile);
+    await getMatch(profile.id, jobId);
+    const m = await jobStore.scoreFor(profile, await getJob(jobId));
+    res.json(scoreReply(jobId, m));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/me/rescore  ->  rescores a few of the user's jobs whose score failed
+// or is older than the CV. The app calls it again while `remaining` > 0.
 router.post('/rescore', async (req, res, next) => {
   try {
     const profile = await getProfile(req.user.id);
     engine.requireCvProfile(profile);
 
-    const jobs = check(
-      await db().from('jobs').select('*').gte('created_at', since(FEED_DAYS)).order('created_at', { ascending: false }).limit(300),
-      'load recent jobs'
+    const links = check(
+      await db().from('job_matches').select('*').eq('user_id', profile.id).order('scored_at', { ascending: true }).limit(500),
+      'load your jobs'
     );
-    const matches = check(
-      await db().from('job_matches').select('job_id, scored_at').eq('user_id', profile.id),
-      'load your matches'
-    );
-    const scoredAt = new Map(matches.map((m) => [m.job_id, m.scored_at]));
-    const cvTime = profile.cv_updated_at ? new Date(profile.cv_updated_at).getTime() : 0;
-    const stale = jobs.filter((j) => !scoredAt.has(j.id) || new Date(scoredAt.get(j.id)).getTime() < cvTime);
-
+    const stale = links.filter((m) => !jobStore.isFresh(m, profile));
     const batch = stale.slice(0, RESCORE_BATCH);
-    const results = await engine.mapLimit(batch, RESCORE_BATCH, (job) => jobStore.scoreFor(profile, job));
-    const failed = results.filter((r) => !r.ok);
-    if (failed.length) console.error('rescore failures:', failed.map((r) => r.error.message).join(' | '));
-    if (batch.length && failed.length === batch.length) {
-      throw new AppError(`Could not score jobs: ${failed[0].error.message}`, failed[0].error.status || 502);
-    }
+    const jobs = batch.length
+      ? check(await db().from('jobs').select('*').in('id', batch.map((m) => m.job_id)), 'load the jobs')
+      : [];
 
-    res.json({ scored: results.length - failed.length, failed: failed.length, remaining: stale.length - batch.length });
+    const results = await engine.mapLimit(jobs, RESCORE_BATCH, (job) => jobStore.scoreFor(profile, job));
+    const scored = results.filter((r) => r.ok && r.value.score_status === 'scored').length;
+    const failed = jobs.length - scored;
+    // Jobs that failed again stay "failed" and are left for a later retry, so
+    // the loop in the app ends instead of retrying them forever.
+    res.json({ scored, failed, remaining: Math.max(0, stale.length - batch.length) });
   } catch (err) {
     next(err);
   }
@@ -196,22 +246,27 @@ async function saveAnalysis(userId, jobId, job, result) {
   return rows[0].id;
 }
 
-// POST /api/me/jobs/:jobId/analyze  ->  readout + plan for a job from the feed
+// POST /api/me/jobs/:jobId/analyze  ->  readout + plan for a job in the user's list.
+// Uses the job's stored score (the one Job Hunter reported); scores it only if
+// that score is missing, failed or older than the CV.
 router.post('/jobs/:jobId/analyze', async (req, res, next) => {
   try {
     const jobId = uuidParam(req.params.jobId, 'job');
     const profile = await getProfile(req.user.id);
     const cv = engine.requireCvProfile(profile);
+    let row = await getMatch(profile.id, jobId);
     const stored = await getJob(jobId);
     const job = await jobStore.ensureAnalysis(stored);
 
-    // Fresh match (and refresh the feed's score with it).
-    const row = await jobStore.scoreFor(profile, stored);
+    if (!jobStore.isFresh(row, profile)) row = await jobStore.scoreFor(profile, stored);
+    if (row.score_status !== 'scored') {
+      throw new AppError(`Could not score this job: ${row.score_error || 'unknown error'}. Try again.`, 502);
+    }
     const matching = {
       job_match_score: row.score,
-      matching_skills: row.matching_skills,
-      partial_match_skills: row.partial_match_skills,
-      missing_skills: row.missing_skills,
+      matching_skills: row.matching_skills || [],
+      partial_match_skills: row.partial_match_skills || [],
+      missing_skills: row.missing_skills || [],
       summary: row.summary,
     };
     const { skillGap, roadmap } = await engine.plan(job, matching);
