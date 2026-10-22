@@ -46,6 +46,8 @@ router.get('/search', async (req, res, next) => {
       company: r.company?.display_name || 'Unknown company',
       location: r.location?.display_name || '—',
       url: r.redirect_url,
+      // Adzuna only shares a snippet; enough to score, the full text is on the posting.
+      description: String(r.description || '').replace(/<[^>]+>/g, '').trim(),
     }));
 
     res.json({ jobs });

@@ -14,11 +14,11 @@ Create these three tables in n8n (**Overview → Data tables → Create**) with 
 | min_salary_currency | string | e.g. EGP |
 | min_salary_period | string | month / year / hour |
 | hours_window | number | a job counts as new if posted within this many hours |
-| max_daily_applications | number | cap for auto-apply |
-| auto_apply_threshold | number | score needed to apply (0-100) |
+| max_daily_applications | number | unused (auto-apply is disabled) |
+| auto_apply_threshold | number | score (0-100) for the "needs manual application" list |
 | report_min_score | number | minimum score to show in the report |
-| auto_apply_enabled | boolean | keep false unless email sending is configured |
-| cv_text | string | plain-text CV — the only source used for scoring |
+| auto_apply_enabled | boolean | ignored: Job Hunter never applies for you |
+| cv_text | string | optional; scoring uses the CV saved in your CareerMind account |
 | cv_pdf_url | string | direct link to the CV PDF (for email applications) |
 | applicant_name / applicant_email / applicant_phone | string | used to sign cover letters |
 | whatsapp_to | string | your number, international format without + |
@@ -27,7 +27,8 @@ Create these three tables in n8n (**Overview → Data tables → Create**) with 
 | greenhouse_boards / lever_boards | string | optional company board slugs, comma-separated |
 | extra_rss_feeds | string | optional extra RSS job feeds |
 | news_query_en / news_query_ar | string | Google News search queries |
-| careermind_url | string | optional: your CareerMind app URL (e.g. `https://my-careermind.vercel.app`). When set, strong matches get a skill-gap check through `POST /api/match` |
+| careermind_url | string | **required**: your CareerMind app URL (e.g. `https://my-careermind.vercel.app`). Jobs are scored through `POST /api/hunter/jobs` |
+| careermind_email | string | **required**: the email of your CareerMind account. Jobs are scored against its CV and appear in its **My jobs** |
 
 ## jh_jobs
 `job_key` string · `dedup_key` string · `source` string · `title` string · `company` string · `location` string · `work_mode` string · `salary_min` number · `salary_max` number · `salary_currency` string · `salary_period` string · `posted_at` date · `apply_url` string · `apply_email` string · `skills` string · `is_fresh` boolean · `match_score` number · `match_reason` string · `status` string · `status_note` string · `gmail_thread_id` string · `confirmation_ref` string · `applied_at` date · `confirmed_at` date · `found_at` date · `description` string · `careermind_score` number · `skill_gaps` string

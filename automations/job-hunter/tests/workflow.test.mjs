@@ -8,6 +8,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 const workflow = JSON.parse(read('workflow/job-hunter-all-in-one.json'));
 const raw = JSON.stringify(workflow);
 const schema = read('data-tables/schema.md');
+const code = (name) => workflow.nodes.find((n) => n.name === name).parameters.jsCode;
 
 /** Column names documented for a table in data-tables/schema.md. */
 function documentedColumns(table) {
@@ -84,4 +85,20 @@ test("every $('Node') reference points at a node in the export", () => {
     }
     assert.ok(names.has(name), `the workflow reads $('${name}'), which isn't a node`);
   }
+});
+
+test('jobs are scored by CareerMind only, and nothing is sent automatically', () => {
+  const names = new Set(workflow.nodes.map((n) => n.name));
+  for (const gone of ['Score Job Match', 'Gemini Scoring Model', 'Score JSON Parser', 'Deep Check?', 'CareerMind Gap Check']) {
+    assert.ok(!names.has(gone), `${gone} should not be in the export`);
+  }
+  assert.deepEqual(workflow.connections['Prepare Jobs For Scoring'].main[0].map((t) => t.node), ['CareerMind Score']);
+  assert.deepEqual(workflow.connections['CareerMind Score'].main[0].map((t) => t.node), ['Map CareerMind Scores']);
+  const url = workflow.nodes.find((n) => n.name === 'CareerMind Score').parameters.url;
+  assert.match(url, /\/api\/hunter\/jobs$/);
+  // The application-sending branch stays disabled.
+  for (const name of ['Write Cover Letter', 'Download CV PDF', 'Mark Email Sent', 'Gemini Letter Model']) {
+    assert.equal(workflow.nodes.find((n) => n.name === name).disabled, true, `${name} must stay disabled`);
+  }
+  assert.doesNotMatch(code('Plan Applications'), /action = 'auto_apply'/);
 });

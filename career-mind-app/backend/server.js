@@ -7,6 +7,9 @@ const analyzeRoutes = require('./routes/analyze');
 const interviewRoutes = require('./routes/interview');
 const jobsRoutes = require('./routes/jobs');
 const matchRoutes = require('./routes/match');
+const meRoutes = require('./routes/me');
+const hunterRoutes = require('./routes/hunter');
+const { dbEnabled } = require('./services/db');
 const { AGENTS, agentMode, missingAgents } = require('./services/agents');
 const { rateLimit, envLimit } = require('./services/rateLimit');
 
@@ -49,6 +52,18 @@ app.get('/api/health', (req, res) => {
     agents,
     jobSearch: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
     matchApi: !!process.env.CAREERMIND_API_KEY,
+    accounts: dbEnabled() && !!process.env.SUPABASE_PUBLISHABLE_KEY,
+  });
+});
+
+// Public settings the browser needs to sign in. The publishable key is meant
+// to be public; the database is protected by Row Level Security.
+app.get('/api/config', (req, res) => {
+  const on = dbEnabled() && !!process.env.SUPABASE_PUBLISHABLE_KEY;
+  res.json({
+    accounts: on,
+    supabaseUrl: on ? process.env.SUPABASE_URL : null,
+    supabaseKey: on ? process.env.SUPABASE_PUBLISHABLE_KEY : null,
   });
 });
 
@@ -76,7 +91,26 @@ app.use('/api/match', rateLimit({
   message: 'Too many match requests. Please try again later.',
 }));
 
+// Signed-in calls that run agents: CV upload, analyses and scoring.
+app.use(['/api/me/cv', '/api/me/analyze', '/api/me/jobs/:jobId/analyze'], rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_ANALYSES_PER_HOUR', 10),
+  message: 'Too many analyses from this connection. Please try again in an hour.',
+}));
+app.use('/api/me/rescore', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_RESCORES_PER_HOUR', 60),
+  message: 'Too many scoring requests. Please try again later.',
+}));
+app.use('/api/hunter', rateLimit({
+  windowMs: HOUR,
+  max: envLimit('RATE_LIMIT_MATCHES_PER_HOUR', 120),
+  message: 'Too many match requests. Please try again later.',
+}));
+
 app.use('/api/match', matchRoutes);
+app.use('/api/me', meRoutes);
+app.use('/api/hunter', hunterRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/jobs', jobsRoutes);

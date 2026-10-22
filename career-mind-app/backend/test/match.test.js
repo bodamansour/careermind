@@ -71,5 +71,6 @@ test('match API returns a numeric score and the skill lists', async (t) => {
     matching_skills: ['Node.js'],
     partial_match_skills: [],
     missing_skills: ['n8n'],
+    meets_level: true,
   });
 });
