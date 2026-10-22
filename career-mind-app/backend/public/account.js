@@ -190,10 +190,11 @@
     const card = document.createElement('article');
     card.className = 'job-card feed-card';
 
+    const failed = m.score_status === 'failed';
     const badge = document.createElement('div');
-    badge.className = `score-badge ${scoreClass(m.score)}`;
-    badge.textContent = m.score ?? '—';
-    badge.title = 'Match score';
+    badge.className = `score-badge ${failed ? 'failed' : scoreClass(m.score)}`;
+    badge.textContent = failed ? '!' : m.score ?? '—';
+    badge.title = failed ? 'Scoring failed' : 'Match score';
 
     const body = document.createElement('div');
     body.className = 'feed-body';
@@ -201,8 +202,16 @@
     title.textContent = job.title;
     const meta = document.createElement('div');
     meta.className = 'job-company';
-    meta.textContent = [job.company, job.location, job.source].filter(Boolean).join(' · ');
+    const sources = (job.sources && job.sources.length ? job.sources : [job.source]).join(', ');
+    meta.textContent = [job.company, job.location, `via ${sources}`].filter(Boolean).join(' · ');
     body.append(title, meta);
+
+    if (failed) {
+      const err = document.createElement('p');
+      err.className = 'feed-error';
+      err.textContent = `Scoring failed: ${m.score_error || 'unknown error'}`;
+      body.appendChild(err);
+    }
 
     if (m.summary) {
       const sum = document.createElement('p');
@@ -229,13 +238,45 @@
 
     const actions = document.createElement('div');
     actions.className = 'feed-actions';
-    const analyze = document.createElement('button');
-    analyze.className = 'btn-secondary';
-    analyze.textContent = 'Full analysis →';
-    analyze.addEventListener('click', () =>
-      runAnalysis(() => api(`/api/me/jobs/${job.id}/analyze`, { method: 'POST' }))
-    );
-    actions.appendChild(analyze);
+    if (failed) {
+      const retry = document.createElement('button');
+      retry.className = 'btn-secondary';
+      retry.textContent = 'Retry scoring';
+      retry.addEventListener('click', async () => {
+        retry.disabled = true;
+        retry.textContent = 'Scoring...';
+        try {
+          const r = await api(`/api/me/jobs/${job.id}/score`, { method: 'POST' });
+          if (r.score_status !== 'scored') toast(`Still failing: ${r.score_error || 'unknown error'}`, 'error');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+        loadFeed();
+      });
+      actions.appendChild(retry);
+    } else {
+      const analyze = document.createElement('button');
+      analyze.className = 'btn-secondary';
+      analyze.textContent = m.analysis_id ? 'New analysis →' : 'Full analysis →';
+      analyze.addEventListener('click', () =>
+        runAnalysis(() => api(`/api/me/jobs/${job.id}/analyze`, { method: 'POST' }))
+      );
+      actions.appendChild(analyze);
+    }
+
+    if (m.analysis_id) {
+      const open = document.createElement('button');
+      open.className = 'link-btn';
+      open.textContent = 'Open last analysis';
+      open.addEventListener('click', async () => {
+        try {
+          loadResult(await api(`/api/me/analyses/${m.analysis_id}`));
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      actions.appendChild(open);
+    }
 
     if (/^https?:\/\//i.test(job.url || '')) {
       const link = document.createElement('a');
@@ -284,7 +325,7 @@
       list.innerHTML = '';
       if (!jobs.length) {
         list.innerHTML =
-          '<p class="hint">No jobs here yet. Job Hunter adds new ones every morning; you can also press “Score new jobs” or add one by hand.</p>';
+          '<p class="hint">No jobs here yet. Job Hunter adds new ones every morning, or add one by hand.</p>';
         return;
       }
       jobs.forEach((m) => list.appendChild(feedCard(m)));
@@ -308,7 +349,9 @@
       for (;;) {
         const r = await api('/api/me/rescore', { method: 'POST' });
         total += r.scored;
-        status.textContent = r.remaining ? `Scored ${total} · ${r.remaining} left...` : `Scored ${total} job${total === 1 ? '' : 's'}.`;
+        status.textContent = r.remaining
+          ? `Scored ${total} · ${r.remaining} left...`
+          : `Scored ${total} job${total === 1 ? '' : 's'}${r.failed ? ` · ${r.failed} still failing (retry later)` : ''}.`;
         if (!r.remaining || !r.scored) break;
       }
     } catch (err) {
@@ -330,7 +373,7 @@
         method: 'POST',
         json: { title: job.title, company: job.company, location: job.location, url: job.url, description: job.description, source: 'adzuna' },
       });
-      button.textContent = `Saved · ${r.score ?? '—'}/100`;
+      button.textContent = r.score_status === 'scored' ? `Saved · ${r.score}/100` : 'Saved · scoring failed (retry in My jobs)';
     } catch (err) {
       button.disabled = false;
       button.textContent = 'Save to my jobs';
@@ -347,7 +390,8 @@
         json: { title: $('addJobTitle').value, url: $('addJobUrl').value, description: $('addJobDesc').value },
       });
       ['addJobTitle', 'addJobUrl', 'addJobDesc'].forEach((id) => ($(id).value = ''));
-      toast(`Saved. Match score: ${r.score ?? '—'}/100`);
+      if (r.score_status === 'scored') toast(`Saved. Match score: ${r.score}/100`);
+      else toast(`Saved, but scoring failed: ${r.score_error || 'unknown error'}. Retry from the list.`, 'error');
       loadFeed();
     } catch (err) {
       toast(err.message, 'error');
