@@ -46,7 +46,7 @@ One matching engine, three ways to use it:
 | Part | For | What it does | Where |
 | --- | --- | --- | --- |
 | **CareerMind app** | Candidates | CV vs. job analysis, skill gaps, roadmap and mock interview in the browser. With an account: a saved CV, a **My jobs** feed of every job Job Hunter finds, scored against your CV, and a history of your analyses | [`career-mind-app/`](career-mind-app/backend) |
-| **Job Hunter** | Candidates | n8n workflow: finds entry-level jobs daily, sends them to CareerMind to be scored, and sends a WhatsApp report with the skills you're missing for each strong match | [`automations/job-hunter/`](automations/job-hunter) |
+| **Job Hunter** | Candidates | n8n workflow: finds entry-level jobs daily, sends them to CareerMind (the only scorer), and sends a WhatsApp report with the skills you're missing for each strong match. It never applies for you | [`automations/job-hunter/`](automations/job-hunter) |
 | **Applicant Screening** | Recruiters | n8n workflow: scores each application against the job, saves it to Google Sheets and alerts the recruiter about strong applicants | [`automations/applicant-screening/`](automations/applicant-screening) |
 
 ```mermaid
@@ -69,27 +69,36 @@ flowchart LR
 ```
 
 One engine scores everything: the CV Analyzer, Job Analyzer and Matching agents.
-Job Hunter sends each new job to `POST /api/hunter/jobs`; CareerMind analyzes the job
-once, scores it against the CV of every account, and saves it. The same job then shows
-up in the app's **My jobs** with the same score Job Hunter put in your WhatsApp report,
-and one click runs the full analysis (skill gaps, roadmap, mock interview) on it.
+Job Hunter sends each new job to `POST /api/hunter/jobs` with the email of its owner's
+account. CareerMind saves the job once (de-duplicated by source id, then by posting URL,
+keeping every source it came from), analyzes it once, scores it against **that account's**
+CV and links it to that account only. The job then shows up in the owner's **My jobs** with
+the same score Job Hunter put in the WhatsApp report, and the full analysis (skill gaps,
+roadmap, mock interview) reuses that score.
+
+If scoring fails, the job is saved as *scoring failed* with the error. Job Hunter retries
+it on its next run, and the app shows it with a **Retry scoring** button. No other model
+fills in a score.
 
 ### My jobs (accounts)
 
 Accounts are optional; without them the app works exactly as before. With them:
 
 - **Saved CV.** Upload it once; every scan and every job uses it.
-- **My jobs.** Every job Job Hunter found in the last 30 days, best match first, with
-  the skills you're missing. Filter by score, mark jobs *saved*, *applied* or *hidden*,
-  add a job by hand, or save one from the *Open roles* search.
-- **Full analysis from the feed.** Readout, roadmap and mock interview for any job,
-  saved to **History** with the interview score.
-- **Score new jobs.** After you replace your CV, the app rescores recent jobs in small
-  batches.
+- **My jobs.** Every job your Job Hunter found in the last 30 days, best match first,
+  with the skills you're missing and where it came from. Filter by score, mark jobs
+  *saved*, *applied* or *hidden* (kept across visits), add a job by hand, or save one
+  from the *Open roles* search; all of them go through the same store and scorer.
+- **Full analysis from the feed.** Readout, roadmap and mock interview for a job, linked
+  to that job and saved to **History** with the interview score. *Open last analysis*
+  reopens it from the feed.
+- **Rescore my jobs.** After you replace your CV, or when scores failed, the app
+  rescores your jobs in small batches.
+- **Privacy.** Each account only reaches its own CV, jobs, statuses and analyses. The
+  browser gets the publishable key only; the server holds the secret key.
 
-Setup: create a Supabase project, run
-[`supabase/migrations/20261022000000_init.sql`](supabase/migrations/20261022000000_init.sql)
-in its SQL editor, then set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and
+Setup: create a Supabase project, run the files in
+[`supabase/migrations/`](supabase/migrations) in order in its SQL editor, then set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and
 `SUPABASE_SECRET_KEY` (Settings → API Keys). In *Authentication → URL Configuration*,
 set the Site URL to your app's URL so the sign-up confirmation link opens the app.
 
@@ -370,7 +379,7 @@ All endpoints return JSON. Errors always have the shape `{ "error": "<message>" 
 | `POST` | `/api/match` | `{ cvText, jdText }` + header `x-api-key` | `{ job_title, candidate_name, job_match_score, matching_skills, partial_match_skills, missing_skills }` |
 | `GET` | `/api/jobs/search?q=<role>` | – | `{ jobs: [{ title, company, location, url, description }] }` |
 | `GET` | `/api/config` | – | `{ accounts, supabaseUrl, supabaseKey }` (public sign-in settings) |
-| `POST` | `/api/hunter/jobs` | `{ jobs: [≤10], report_for? }` + header `x-api-key` | `{ received, users_scored, errors, results: [{ source, external_id, job_id, score, meets_level, matching_skills, partial_match_skills, missing_skills, summary }] }` |
+| `POST` | `/api/hunter/jobs` | `{ report_for, jobs: [≤10] }` + header `x-api-key` | `{ received, scored, failed, results: [{ source, external_id, job_id, score_status, score, meets_level, matching_skills, partial_match_skills, missing_skills, summary, error? }] }` |
 
 Signed-in endpoints (header `Authorization: Bearer <Supabase access token>`):
 
@@ -378,10 +387,11 @@ Signed-in endpoints (header `Authorization: Bearer <Supabase access token>`):
 | --- | --- | --- | --- |
 | `GET` | `/api/me` | – | `{ email, full_name, has_cv, cv_updated_at, cv: { name, current_title, skills } }` |
 | `POST` | `/api/me/cv` | multipart: `cvFile` | same as `GET /api/me` |
-| `GET` | `/api/me/jobs?status=active\|new\|saved\|applied\|hidden\|all&min=0` | – | `{ jobs: [{ score, missing_skills, summary, status, job: {…} }] }` |
+| `GET` | `/api/me/jobs?status=active\|new\|saved\|applied\|hidden\|all&min=0` | – | `{ jobs: [{ score, score_status, score_error, missing_skills, summary, status, origin, analysis_id, job: {…} }] }` |
 | `PATCH` | `/api/me/jobs/:jobId` | `{ status }` | `{ job_id, status }` |
-| `POST` | `/api/me/jobs` | `{ title, description, company?, location?, url? }` | `{ job_id, score, missing_skills }` |
-| `POST` | `/api/me/rescore` | – | `{ scored, failed, remaining }` (call again while `remaining > 0`) |
+| `POST` | `/api/me/jobs` | `{ title, description, company?, location?, url? }` | `{ job_id, score_status, score, score_error, missing_skills }` |
+| `POST` | `/api/me/jobs/:jobId/score` | – | same (retry one job's score) |
+| `POST` | `/api/me/rescore` | – | `{ scored, failed, remaining }`: rescores your jobs that failed or are older than your CV (call again while `remaining > 0`) |
 | `POST` | `/api/me/jobs/:jobId/analyze` | – | `{ cv, job, matching, skillGap, roadmap, analysisId }` |
 | `POST` | `/api/me/analyze` | `{ jdText }` | same, using the saved CV |
 | `GET` | `/api/me/analyses` · `/api/me/analyses/:id` | – | list · one analysis |
@@ -413,10 +423,12 @@ curl -X POST https://<your-app>/api/match \
 In n8n, store the key as a **Header Auth** credential named `CareerMind API Key`
 (header `x-api-key`). Both workflows use that name.
 
-`POST /api/hunter/jobs` takes up to 10 jobs (`source`, `external_id`, `title`,
-`description`, and optionally `company`, `location`, `url`, `salary`, `apply_email`,
-`posted_at`). It saves them, analyzes each job once, scores it for every account with a
-CV, and returns the scores of the account in `report_for` (Job Hunter's owner).
+`POST /api/hunter/jobs` takes `report_for` (the email of the Job Hunter owner's account,
+which must have a CV) and up to 10 jobs (`source`, `external_id`, `title`, `description`,
+and optionally `company`, `location`, `url`, `salary`, `apply_email`, `posted_at`). It
+saves them (de-duplicated by source id and URL), links them to that account, scores the
+ones without a current score, and returns one result per job: `score_status: "scored"`
+with the score, or `"failed"` with the `error`.
 
 ## Error handling
 
