@@ -45,27 +45,53 @@ One matching engine, three ways to use it:
 
 | Part | For | What it does | Where |
 | --- | --- | --- | --- |
-| **CareerMind app** | Candidates | CV vs. job analysis, skill gaps, roadmap and mock interview in the browser | [`career-mind-app/`](career-mind-app/backend) |
-| **Job Hunter** | Candidates | n8n workflow: finds entry-level jobs daily, scores them, and sends a WhatsApp report with the skills you're missing for each strong match | [`automations/job-hunter/`](automations/job-hunter) |
+| **CareerMind app** | Candidates | CV vs. job analysis, skill gaps, roadmap and mock interview in the browser. With an account: a saved CV, a **My jobs** feed of every job Job Hunter finds, scored against your CV, and a history of your analyses | [`career-mind-app/`](career-mind-app/backend) |
+| **Job Hunter** | Candidates | n8n workflow: finds entry-level jobs daily, sends them to CareerMind to be scored, and sends a WhatsApp report with the skills you're missing for each strong match | [`automations/job-hunter/`](automations/job-hunter) |
 | **Applicant Screening** | Recruiters | n8n workflow: scores each application against the job, saves it to Google Sheets and alerts the recruiter about strong applicants | [`automations/applicant-screening/`](automations/applicant-screening) |
 
 ```mermaid
 flowchart LR
     subgraph App["CareerMind app (Express)"]
         UI[Web UI] --> FA["/api/full-analysis"]
+        UI --> ME["/api/me (My jobs, history)"]
+        H["/api/hunter/jobs"]
         M["/api/match"]
     end
-    JH["Job Hunter (n8n)"] -- "strong matches: CV + job" --> M
+    DB[(Supabase: CVs, jobs, scores, analyses)]
+    JH["Job Hunter (n8n)"] -- "new jobs every morning" --> H
+    H -- "score + missing skills" --> JH
+    H <--> DB
+    ME <--> DB
     AS["Applicant Screening (n8n)"] -- "each application: CV + job" --> M
-    M -- "score + matching / missing skills" --> JH
     M -- "score + matching / missing skills" --> AS
     JH --> WA[(WhatsApp report)]
     AS --> GS[(Google Sheets + email)]
 ```
 
-The automations call `POST /api/match`, which runs the CV Analyzer, Job Analyzer and
-Matching agents, so a job or an applicant gets the same score in every part of the
-platform.
+One engine scores everything: the CV Analyzer, Job Analyzer and Matching agents.
+Job Hunter sends each new job to `POST /api/hunter/jobs`; CareerMind analyzes the job
+once, scores it against the CV of every account, and saves it. The same job then shows
+up in the app's **My jobs** with the same score Job Hunter put in your WhatsApp report,
+and one click runs the full analysis (skill gaps, roadmap, mock interview) on it.
+
+### My jobs (accounts)
+
+Accounts are optional; without them the app works exactly as before. With them:
+
+- **Saved CV.** Upload it once; every scan and every job uses it.
+- **My jobs.** Every job Job Hunter found in the last 30 days, best match first, with
+  the skills you're missing. Filter by score, mark jobs *saved*, *applied* or *hidden*,
+  add a job by hand, or save one from the *Open roles* search.
+- **Full analysis from the feed.** Readout, roadmap and mock interview for any job,
+  saved to **History** with the interview score.
+- **Score new jobs.** After you replace your CV, the app rescores recent jobs in small
+  batches.
+
+Setup: create a Supabase project, run
+[`supabase/migrations/20261022000000_init.sql`](supabase/migrations/20261022000000_init.sql)
+in its SQL editor, then set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and
+`SUPABASE_SECRET_KEY` (Settings → API Keys). In *Authentication → URL Configuration*,
+set the Site URL to your app's URL so the sign-up confirmation link opens the app.
 
 ## Why CareerMind
 
@@ -264,14 +290,18 @@ same command on every pull request and push to `main`.
 | `AIMICROMIND_API_KEY` | – | Only if your chatflows use *API Key* authorization |
 | `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | – | Turns on the *Open roles* step |
 | `ADZUNA_COUNTRY` | – | Two-letter job market code (`gb`, `us`, `in`, `de`, …). Default `gb` |
-| `CAREERMIND_API_KEY` | – | Turns on `POST /api/match` for the n8n automations. Use a long random secret |
+| `CAREERMIND_API_KEY` | – | Turns on `POST /api/match` and `POST /api/hunter/jobs` for the n8n automations. Use a long random secret |
+| `SUPABASE_URL` | – | Your Supabase project URL. With the two keys below, turns on accounts |
+| `SUPABASE_PUBLISHABLE_KEY` | – | The project's publishable key. Sent to the browser for sign-in; public by design |
+| `SUPABASE_SECRET_KEY` | – | The project's secret key. **Server only**; never commit it |
 | `ALLOWED_ORIGINS` | – | Other websites allowed to call the API from a browser, comma-separated (e.g. `https://my-site.com`). By default only the app itself can, so other sites can't spend your LLM credits through visitors' browsers |
 | `FLOW_TIMEOUT_MS` | – | Max wait per agent call in ms. Default `90000` |
 | `PORT` | – | Local port. Default `3000` (Render sets this for you) |
 | `RATE_LIMIT_ANALYSES_PER_HOUR` | – | Full analyses allowed per visitor IP per hour. Default `10`, `0` turns the limit off |
 | `RATE_LIMIT_INTERVIEW_MESSAGES_PER_HOUR` | – | Interview messages per IP per hour. Default `100` |
 | `RATE_LIMIT_JOB_SEARCHES_PER_HOUR` | – | Job searches per IP per hour. Default `60` |
-| `RATE_LIMIT_MATCHES_PER_HOUR` | – | `/api/match` calls per IP per hour. Default `120` |
+| `RATE_LIMIT_MATCHES_PER_HOUR` | – | `/api/match` and `/api/hunter` calls per IP per hour. Default `120` |
+| `RATE_LIMIT_RESCORES_PER_HOUR` | – | *Score new jobs* calls per IP per hour. Default `60` |
 
 > **Rate limits:** every analysis and interview turn spends LLM credits, so the
 > API answers `429` once a visitor passes these limits. The counts are kept in
@@ -338,7 +368,24 @@ All endpoints return JSON. Errors always have the shape `{ "error": "<message>" 
 | `POST` | `/api/interview/start` | `{ cv, job }` | `{ sessionId, message, isFinal: false }` |
 | `POST` | `/api/interview/message` | `{ sessionId, message, cv, job, history[] }` | `{ message, isFinal, evaluation }` |
 | `POST` | `/api/match` | `{ cvText, jdText }` + header `x-api-key` | `{ job_title, candidate_name, job_match_score, matching_skills, partial_match_skills, missing_skills }` |
-| `GET` | `/api/jobs/search?q=<role>` | – | `{ jobs: [{ title, company, location, url }] }` |
+| `GET` | `/api/jobs/search?q=<role>` | – | `{ jobs: [{ title, company, location, url, description }] }` |
+| `GET` | `/api/config` | – | `{ accounts, supabaseUrl, supabaseKey }` (public sign-in settings) |
+| `POST` | `/api/hunter/jobs` | `{ jobs: [≤10], report_for? }` + header `x-api-key` | `{ received, users_scored, errors, results: [{ source, external_id, job_id, score, meets_level, matching_skills, partial_match_skills, missing_skills, summary }] }` |
+
+Signed-in endpoints (header `Authorization: Bearer <Supabase access token>`):
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/api/me` | – | `{ email, full_name, has_cv, cv_updated_at, cv: { name, current_title, skills } }` |
+| `POST` | `/api/me/cv` | multipart: `cvFile` | same as `GET /api/me` |
+| `GET` | `/api/me/jobs?status=active\|new\|saved\|applied\|hidden\|all&min=0` | – | `{ jobs: [{ score, missing_skills, summary, status, job: {…} }] }` |
+| `PATCH` | `/api/me/jobs/:jobId` | `{ status }` | `{ job_id, status }` |
+| `POST` | `/api/me/jobs` | `{ title, description, company?, location?, url? }` | `{ job_id, score, missing_skills }` |
+| `POST` | `/api/me/rescore` | – | `{ scored, failed, remaining }` (call again while `remaining > 0`) |
+| `POST` | `/api/me/jobs/:jobId/analyze` | – | `{ cv, job, matching, skillGap, roadmap, analysisId }` |
+| `POST` | `/api/me/analyze` | `{ jdText }` | same, using the saved CV |
+| `GET` | `/api/me/analyses` · `/api/me/analyses/:id` | – | list · one analysis |
+| `PUT` | `/api/me/analyses/:id/interview` | `{ evaluation }` | `{ ok: true }` |
 
 ## The match API
 
@@ -365,6 +412,11 @@ curl -X POST https://<your-app>/api/match \
 
 In n8n, store the key as a **Header Auth** credential named `CareerMind API Key`
 (header `x-api-key`). Both workflows use that name.
+
+`POST /api/hunter/jobs` takes up to 10 jobs (`source`, `external_id`, `title`,
+`description`, and optionally `company`, `location`, `url`, `salary`, `apply_email`,
+`posted_at`). It saves them, analyzes each job once, scores it for every account with a
+CV, and returns the scores of the account in `report_for` (Job Hunter's owner).
 
 ## Error handling
 
@@ -410,7 +462,8 @@ all model output is rendered as plain text, never as HTML.
 
 ## Roadmap
 
-- [ ] Accounts and saved scans (PostgreSQL)
+- [x] Accounts, saved CV, daily job feed and saved scans (Supabase)
+- [ ] Google sign-in
 - [ ] OCR for scanned CVs
 - [ ] Streaming agent progress to the loading screen
 - [ ] Exportable PDF report of the readiness scan
