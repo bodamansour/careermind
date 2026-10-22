@@ -163,7 +163,7 @@ label {
   color: var(--text-dim);
 }
 
-textarea, input[type="text"] {
+textarea, input[type="text"], input[type="email"], input[type="password"], input[type="url"], select {
   width: 100%;
   padding: 11px 13px;
   border-radius: 4px;
@@ -510,3 +510,79 @@ button:active { transform: scale(0.97); }
 
 .msg.agent.error { border-left-color: var(--danger); color: var(--danger); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Accounts ---------- */
+header { position: relative; }
+.account-bar {
+  position: absolute;
+  top: 14px; right: 0;
+  display: flex; gap: 10px; align-items: center;
+  font-size: 12px; color: var(--text-dim);
+}
+.link-btn {
+  background: none; border: 0; padding: 4px 2px; margin: 0;
+  color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer;
+}
+.link-btn:hover, .link-btn[aria-pressed="true"] { color: var(--signal); }
+.link-btn:disabled { cursor: default; opacity: 0.7; }
+
+.mode-tabs {
+  max-width: 640px; margin: 20px auto 0;
+  display: flex; gap: 4px; justify-content: center;
+}
+.mode-tab {
+  background: none; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--text-dim); font: inherit; font-size: 13px;
+  padding: 6px 16px; cursor: pointer;
+}
+.mode-tab:hover { color: var(--text); }
+.mode-tab.active { color: var(--bg); background: var(--signal); border-color: var(--signal); }
+
+.saved-cv {
+  display: flex; gap: 8px; align-items: center;
+  margin: 12px 0; color: var(--text); cursor: pointer;
+}
+.saved-cv input { width: auto; margin: 0; }
+.saved-cv .mono { color: var(--signal); font-size: 12px; }
+
+.cv-card {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; margin: 14px 0;
+}
+.cv-card-title { font-weight: 600; font-size: 14px; }
+.cv-card .hint { margin: 4px 0 0; }
+.file-btn { display: inline-block; margin: 0; color: var(--text); font-weight: 600; font-size: 13px; position: relative; overflow: hidden; white-space: nowrap; cursor: pointer; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.feed-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.feed-toolbar select { width: auto; margin: 0; }
+.feed-toolbar button { margin: 0; }
+
+.add-job { margin: 6px 0 16px; font-size: 13px; }
+.add-job summary { cursor: pointer; color: var(--text-dim); }
+.add-job summary:hover { color: var(--signal); }
+
+.feed-card, .history-card { display: flex; gap: 14px; align-items: flex-start; }
+.history-card { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.feed-body { flex: 1; min-width: 0; }
+.score-badge {
+  flex-shrink: 0; width: 46px; height: 46px; border-radius: 4px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 600; font-size: 15px;
+  border: 1px solid var(--line); color: var(--text-dim);
+}
+.score-badge.high { color: var(--signal); border-color: var(--signal); background: var(--signal-dim); }
+.score-badge.mid { color: var(--amber); border-color: var(--amber); background: var(--amber-dim); }
+.feed-summary { font-size: 12px; color: var(--text-dim); margin: 6px 0 0; line-height: 1.5; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.chips-label { font-size: 11px; color: var(--text-dim); }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.chip.gap { color: var(--amber); border-color: var(--amber-dim); }
+.feed-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.feed-actions .btn-secondary { margin: 0; padding: 6px 12px; font-size: 12px; }
+.feed-actions a { font-size: 12px; color: var(--signal); text-decoration: none; }
+
+@media (max-width: 480px) {
+  .account-bar { position: static; justify-content: center; margin-bottom: 12px; }
+  .cv-card { flex-direction: column; align-items: stretch; }
+}

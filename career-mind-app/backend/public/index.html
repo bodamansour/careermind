@@ -14,9 +14,21 @@
   <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
 
   <header>
+    <div class="account-bar hidden" id="accountBar">
+      <span id="accountEmail" class="mono"></span>
+      <button id="signInBtn" class="link-btn">Sign in</button>
+      <button id="signOutBtn" class="link-btn hidden">Sign out</button>
+    </div>
     <div class="wordmark">CAREERMIND</div>
     <div class="tagline">Multi-agent readiness scan for your next role.</div>
   </header>
+
+  <!-- MODE TABS (shown when accounts are enabled) -->
+  <nav class="mode-tabs hidden" id="modeTabs" aria-label="Sections">
+    <button class="mode-tab active" data-mode="scan">Scan</button>
+    <button class="mode-tab" data-mode="myjobs">My jobs</button>
+    <button class="mode-tab" data-mode="history">History</button>
+  </nav>
 
   <!-- STAGE RAIL -->
   <nav class="stage-rail" id="stageRail" aria-label="Progress">
@@ -34,10 +46,17 @@
       <h2><span class="idx">01</span> Feed the scanner</h2>
       <p class="hint">Upload your CV and paste the job you're targeting. Specialized agents read both, then compare them step by step.</p>
 
+      <label class="saved-cv hidden" id="savedCvRow">
+        <input type="checkbox" id="useSavedCv" checked />
+        <span>Use my saved CV <span id="savedCvName" class="mono"></span></span>
+      </label>
+
+      <div id="cvUploadBlock">
       <label for="cvFile">CV — PDF</label>
       <div class="file-drop" id="fileDrop">
         <input type="file" id="cvFile" accept="application/pdf" />
         <span id="fileLabel" class="file-drop-text">Drop a PDF here, or click to browse</span>
+      </div>
       </div>
 
       <label for="jdText">Job description</label>
@@ -142,8 +161,81 @@
       <p id="jobsError" class="error"></p>
     </section>
 
+    <!-- AUTH -->
+    <section id="auth-section" class="panel hidden">
+      <h2>Sign in</h2>
+      <p class="hint">An account keeps your CV, scores every job Job Hunter finds against it, and saves your analyses.</p>
+      <form id="authForm">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" autocomplete="email" required />
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" autocomplete="current-password" minlength="8" required />
+        <div class="actions">
+          <button type="submit" id="authSubmit" class="btn-primary">Sign in</button>
+          <button type="button" id="authToggle" class="btn-secondary">Create an account instead</button>
+        </div>
+      </form>
+      <p id="authMessage" class="hint" role="status"></p>
+    </section>
+
+    <!-- MY JOBS -->
+    <section id="myjobs-section" class="panel hidden">
+      <h2>My jobs</h2>
+
+      <div class="cv-card" id="cvCard">
+        <div>
+          <div class="cv-card-title" id="cvCardTitle">No CV yet</div>
+          <div class="hint" id="cvCardMeta">Upload your CV once. Every job is scored against it.</div>
+        </div>
+        <label class="btn-secondary file-btn">
+          <input type="file" id="profileCvFile" accept="application/pdf" />
+          <span id="profileCvLabel">Upload CV</span>
+        </label>
+      </div>
+
+      <div class="feed-toolbar">
+        <select id="feedStatus" aria-label="Show">
+          <option value="active">New + saved</option>
+          <option value="saved">Saved</option>
+          <option value="applied">Applied</option>
+          <option value="hidden">Hidden</option>
+          <option value="all">All</option>
+        </select>
+        <select id="feedMin" aria-label="Minimum score">
+          <option value="0">Any score</option>
+          <option value="50">50+</option>
+          <option value="70">70+</option>
+          <option value="80">80+</option>
+        </select>
+        <button id="rescoreBtn" class="btn-secondary">Score new jobs</button>
+      </div>
+      <p id="rescoreStatus" class="hint mono" role="status"></p>
+
+      <details class="add-job">
+        <summary>Add a job by hand</summary>
+        <label for="addJobTitle">Title</label>
+        <input type="text" id="addJobTitle" />
+        <label for="addJobUrl">Link (optional)</label>
+        <input type="url" id="addJobUrl" />
+        <label for="addJobDesc">Job description</label>
+        <textarea id="addJobDesc" rows="5"></textarea>
+        <button id="addJobBtn" class="btn-primary">Save and score</button>
+      </details>
+
+      <div id="feedList" class="jobs-list"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="history-section" class="panel hidden">
+      <h2>History</h2>
+      <p class="hint">Your saved analyses. Open one to see its readout, plan and interview.</p>
+      <div id="historyList" class="jobs-list"></div>
+    </section>
+
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="app.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

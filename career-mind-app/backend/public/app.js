@@ -5,6 +5,18 @@ const sections = {
   plan: document.getElementById('plan-section'),
   interview: document.getElementById('interview-section'),
   jobs: document.getElementById('jobs-section'),
+  auth: document.getElementById('auth-section'),
+  myjobs: document.getElementById('myjobs-section'),
+  history: document.getElementById('history-section'),
+};
+
+// Filled in by account.js when accounts are enabled.
+const account = {
+  signedIn: () => false,
+  hasCv: () => false,
+  authHeaders: () => ({}),
+  saveInterview: async () => {},
+  onShow: () => {},
 };
 
 const stageOrder = ['upload', 'dashboard', 'plan', 'interview', 'jobs'];
@@ -85,12 +97,14 @@ let state = {
   interviewSessionId: null,
   interviewHistory: [],
   interviewScore: null,
+  analysisId: null,
 };
 
 function show(name) {
   Object.values(sections).forEach((s) => s.classList.add('hidden'));
   sections[name].classList.remove('hidden');
 
+  account.onShow(name);
   const idx = stageOrder.indexOf(name);
   stageEls.forEach((el, i) => {
     const stageName = stageOrder[i];
@@ -169,7 +183,9 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   const errorEl = document.getElementById('uploadError');
   errorEl.textContent = '';
 
-  if (!cvFileInput.files[0]) {
+  const useSaved = account.signedIn() && account.hasCv() && document.getElementById('useSavedCv').checked;
+
+  if (!useSaved && !cvFileInput.files[0]) {
     toast('Upload your CV as a PDF first.', 'error');
     return;
   }
@@ -177,16 +193,32 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
     toast('Paste the job description first.', 'error');
     return;
   }
-
-  const formData = new FormData();
-  formData.append('cvFile', cvFileInput.files[0]);
-  formData.append('jdText', jdText);
-
-  if (cvFileInput.files[0].size > 4 * 1024 * 1024) {
+  if (!useSaved && cvFileInput.files[0].size > 4 * 1024 * 1024) {
     toast('CV file is too large (max 4 MB).', 'error');
     return;
   }
 
+  let request;
+  if (useSaved) {
+    request = ['/api/me/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await account.authHeaders()) },
+      body: JSON.stringify({ jdText }),
+    }];
+  } else {
+    const formData = new FormData();
+    formData.append('cvFile', cvFileInput.files[0]);
+    formData.append('jdText', jdText);
+    request = ['/api/full-analysis', { method: 'POST', body: formData }];
+  }
+
+  await runAnalysis(() => apiFetch(...request));
+});
+
+// Shows the loading screen while `load` runs, then opens the readout.
+async function runAnalysis(load) {
+  // Where to go back to if the analysis fails.
+  const from = Object.keys(sections).find((k) => k !== 'loading' && !sections[k].classList.contains('hidden')) || 'upload';
   show('loading');
   let step = 0;
   const loadingText = document.getElementById('loadingText');
@@ -196,27 +228,32 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   }, 1800);
 
   try {
-    const data = await apiFetch('/api/full-analysis', { method: 'POST', body: formData });
-
-    state.cv = data.cv;
-    state.interviewSessionId = null;
-    state.interviewScore = null;
-    state.job = data.job;
-    state.matching = data.matching;
-    state.skillGap = data.skillGap;
-    state.roadmap = data.roadmap;
-
+    const data = await load();
     clearInterval(loadingInterval);
-    completedStages.add('dashboard');
-    renderDashboard();
-    show('dashboard');
+    loadResult(data);
     toast('Analysis complete.');
   } catch (err) {
     clearInterval(loadingInterval);
-    show('upload');
+    show(from);
     toast(err.message, 'error');
   }
-});
+}
+
+// Puts an analysis (new or saved) on screen.
+function loadResult(data) {
+  state.cv = data.cv;
+  state.job = data.job;
+  state.matching = data.matching;
+  state.skillGap = data.skillGap;
+  state.roadmap = data.roadmap;
+  state.analysisId = data.analysisId || null;
+  state.interviewSessionId = null;
+  state.interviewHistory = [];
+  state.interviewScore = data.interview ? toScore(data.interview.overall_score) : null;
+  completedStages = new Set(['upload', 'dashboard']);
+  renderDashboard();
+  show('dashboard');
+}
 
 // ---------- DASHBOARD ----------
 const GAUGE_CIRCUMFERENCE = 327; // 2 * PI * 52
@@ -398,6 +435,9 @@ function showFinalEvaluation(evalData) {
   finalSection.classList.remove('hidden');
 
   state.interviewScore = toScore(evalData.overall_score);
+  if (state.analysisId) {
+    account.saveInterview(state.analysisId, evalData).catch((err) => toast(err.message, 'error'));
+  }
 
   // Built with textContent: the model's text must never be parsed as HTML.
   const container = document.getElementById('finalScores');
@@ -491,6 +531,13 @@ async function searchJobs() {
         link.rel = 'noopener noreferrer';
         link.textContent = 'View posting →';
         card.appendChild(link);
+      }
+      if (account.signedIn() && account.hasCv() && job.description) {
+        const save = document.createElement('button');
+        save.className = 'link-btn';
+        save.textContent = 'Save to my jobs';
+        save.addEventListener('click', () => account.saveJob(job, save));
+        card.appendChild(save);
       }
       listEl.appendChild(card);
     });
